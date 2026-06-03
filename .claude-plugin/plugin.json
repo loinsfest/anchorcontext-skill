@@ -1,0 +1,18 @@
+{
+  "name": "anchor-context",
+  "description": "Anchor-based context compression for Claude Code — extract minimal anchors from long conversations and reconstruct context on demand. ~97% compression rate with zero LLM cost.",
+  "version": "1.0.0",
+  "author": {
+    "name": "AnchorContext Contributors"
+  },
+  "homepage": "https://github.com/anchorcontext/anchorcontext-skill",
+  "repository": "https://github.com/anchorcontext/anchorcontext-skill",
+  "license": "MIT",
+  "keywords": [
+    "context-compression",
+    "anchor",
+    "memory",
+    "compaction",
+    "long-conversation"
+  ]
+}
