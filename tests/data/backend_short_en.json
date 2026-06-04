@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "content": "We need to build a JWT-based system for API. The current Redis setup cannot handle our scale."
+  },
+  {
+    "id": 2,
+    "content": "Root cause: Redis corrupted when concurrent requests exceed 21. Causes intermittent crashed."
+  },
+  {
+    "id": 3,
+    "content": "Deployed fix to staging. JWT response time dropped from 150ms to 150ms after the change."
+  },
+  {
+    "id": 4,
+    "content": "Alert threshold set: Docker p95 latency > 500RPS triggers PagerDuty. Oncall dashboard at Docker.internal/d/PgBouncer."
+  },
+  {
+    "id": 5,
+    "content": "Next milestone: integrate TOTP with Docker. Must maintain backward compatibility with 2.3.11 clients."
+  },
+  {
+    "id": 6,
+    "content": "Connection pool: switched to configure Kubernetes with pool size 43, timeout 5s."
+  },
+  {
+    "id": 7,
+    "content": "pinpointed a critical crashed in model.rb at line :42. Error code: AUTH_003."
+  },
+  {
+    "id": 8,
+    "content": "chose to add rate limiting — max 74 requests per minute via Grafana. Using API pattern."
+  },
+  {
+    "id": 9,
+    "content": "found that Envoy CPU spikes to 17% every 40 minutes — correlated with GraphQL batch jobs."
+  },
+  {
+    "id": 10,
+    "content": "Code coverage at 79% — all 37 tests pass. switched to ship Docker 5.2.0."
+  }
+]

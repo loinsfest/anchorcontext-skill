@@ -3101,3 +3101,212 @@ class TestReconstructionNegative:
             assert score < 0.5, f"Single-char query scored {score:.3f}"
         except Exception:
             pass  # Also acceptable if it raises
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# US-007: Generated Test Data Tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+_DATA_DIR = Path(__file__).parent / "data"
+DOMAINS = ["backend", "frontend", "devops", "data-science", "mobile", "game-dev"]
+LENGTHS = {"short": 10, "medium": 30, "long": 60}
+LANGS = ["en", "zh"]
+
+
+class TestGeneratedDataExists:
+    """Verify all 36 test data files were generated."""
+
+    def test_data_directory_exists(self):
+        assert _DATA_DIR.is_dir(), f"tests/data/ directory not found at {_DATA_DIR}"
+
+    def test_all_36_files_generated(self):
+        files = list(_DATA_DIR.glob("*.json"))
+        assert len(files) == 36, f"Expected 36 files, found {len(files)}: {[f.name for f in files]}"
+
+    @pytest.mark.parametrize("domain", DOMAINS)
+    @pytest.mark.parametrize("length", list(LENGTHS.keys()))
+    @pytest.mark.parametrize("lang", LANGS)
+    def test_each_file_exists(self, domain, length, lang):
+        path = _DATA_DIR / f"{domain}_{length}_{lang}.json"
+        assert path.exists(), f"Missing: {path.name}"
+
+
+class TestGeneratedDataContent:
+    """Verify generated data contains required elements."""
+
+    @pytest.mark.parametrize("domain", DOMAINS)
+    @pytest.mark.parametrize("length,expected_count", LENGTHS.items())
+    @pytest.mark.parametrize("lang", LANGS)
+    def test_correct_message_count(self, domain, length, expected_count, lang):
+        path = _DATA_DIR / f"{domain}_{length}_{lang}.json"
+        with open(path, encoding="utf-8") as f:
+            msgs = json.load(f)
+        assert len(msgs) == expected_count, \
+            f"{path.name}: expected {expected_count} msgs, got {len(msgs)}"
+
+    @pytest.mark.parametrize("domain", DOMAINS)
+    @pytest.mark.parametrize("length,expected_count", LENGTHS.items())
+    @pytest.mark.parametrize("lang", LANGS)
+    def test_messages_have_id_and_content(self, domain, length, expected_count, lang):
+        path = _DATA_DIR / f"{domain}_{length}_{lang}.json"
+        with open(path, encoding="utf-8") as f:
+            msgs = json.load(f)
+        for msg in msgs:
+            assert "id" in msg, f"Missing 'id' in {path.name}"
+            assert "content" in msg, f"Missing 'content' in {path.name}"
+            assert isinstance(msg["content"], str)
+            assert len(msg["content"]) > 10, \
+                f"Content too short in {path.name} msg {msg['id']}"
+
+    @pytest.mark.parametrize("domain", DOMAINS)
+    @pytest.mark.parametrize("length", list(LENGTHS.keys()))
+    def test_english_has_decision_verbs(self, domain, length):
+        path = _DATA_DIR / f"{domain}_{length}_en.json"
+        with open(path, encoding="utf-8") as f:
+            msgs = json.load(f)
+        full_text = " ".join(m["content"] for m in msgs)
+        decision_keywords = ["decided", "chose", "switched", "opted for",
+                             "adopted", "migrated", "replaced", "configured",
+                             "deployed", "upgraded", "refactored", "selected"]
+        found = [kw for kw in decision_keywords if kw.lower() in full_text.lower()]
+        assert len(found) >= 1, \
+            f"{path.name}: no decision verb found in {len(msgs)} msgs"
+
+    @pytest.mark.parametrize("domain", DOMAINS)
+    @pytest.mark.parametrize("length", list(LENGTHS.keys()))
+    def test_english_has_discovery_or_anomaly_verbs(self, domain, length):
+        path = _DATA_DIR / f"{domain}_{length}_en.json"
+        with open(path, encoding="utf-8") as f:
+            msgs = json.load(f)
+        full_text = " ".join(m["content"] for m in msgs)
+        keywords = ["found", "discovered", "identified", "traced", "located",
+                    "error", "crash", "timeout", "fail", "broken", "leak",
+                    "diagnosed", "detected", "pinpointed"]
+        found = [kw for kw in keywords if kw.lower() in full_text.lower()]
+        assert len(found) >= 1, \
+            f"{path.name}: no discovery/anomaly verb found"
+
+    @pytest.mark.parametrize("domain", DOMAINS)
+    @pytest.mark.parametrize("length", list(LENGTHS.keys()))
+    def test_has_data_values(self, domain, length, lang="en"):
+        """English files must contain version, error code, number+unit, or line number."""
+        path = _DATA_DIR / f"{domain}_{length}_{lang}.json"
+        with open(path, encoding="utf-8") as f:
+            msgs = json.load(f)
+        full_text = " ".join(m["content"] for m in msgs)
+        # Check for at least 3 of 4 data value types
+        checks = 0
+        import re
+        if re.search(r'\b\d+\.\d+(?:\.\d+)?\b', full_text):
+            checks += 1  # version number
+        if re.search(r'\b[A-Z]{2,6}[_-]\d{3,6}\b', full_text):
+            checks += 1  # error code
+        if re.search(r'\b\d+\s*(?:ms|s|MB|GB|KB|RPS|req/s|min)\b', full_text):
+            checks += 1  # number with unit
+        if re.search(r':\d{2,}', full_text):
+            checks += 1  # line number
+        assert checks >= 3, \
+            f"{path.name}: only {checks}/4 data value types present"
+
+    @pytest.mark.parametrize("domain", DOMAINS)
+    @pytest.mark.parametrize("length", list(LENGTHS.keys()))
+    def test_chinese_has_decision_verbs(self, domain, length):
+        path = _DATA_DIR / f"{domain}_{length}_zh.json"
+        with open(path, encoding="utf-8") as f:
+            msgs = json.load(f)
+        full_text = " ".join(m["content"] for m in msgs)
+        zh_decision = ["决定", "改用", "采用", "切换", "替换", "迁移", "升级", "部署", "配置",
+                       "重构", "优化", "调整", "选择"]
+        found = [kw for kw in zh_decision if kw in full_text]
+        assert len(found) >= 1, \
+            f"{path.name}: no Chinese decision verb found"
+
+    @pytest.mark.parametrize("domain", DOMAINS)
+    @pytest.mark.parametrize("length", list(LENGTHS.keys()))
+    def test_chinese_has_anomaly_verbs(self, domain, length):
+        path = _DATA_DIR / f"{domain}_{length}_zh.json"
+        with open(path, encoding="utf-8") as f:
+            msgs = json.load(f)
+        full_text = " ".join(m["content"] for m in msgs)
+        zh_anomaly = ["报错", "失败", "超时", "崩溃", "异常", "泄漏", "死锁", "阻塞", "挂了"]
+        found = [kw for kw in zh_anomaly if kw in full_text]
+        assert len(found) >= 1, \
+            f"{path.name}: no Chinese anomaly verb found"
+
+    def test_all_english_ids_sequential(self):
+        """Verify message IDs in English files are sequential 1..N."""
+        for domain in DOMAINS:
+            for length, expected in LENGTHS.items():
+                path = _DATA_DIR / f"{domain}_{length}_en.json"
+                with open(path, encoding="utf-8") as f:
+                    msgs = json.load(f)
+                ids = [m["id"] for m in msgs]
+                assert ids == list(range(1, expected + 1)), \
+                    f"{path.name}: IDs not sequential 1..{expected}"
+
+    def test_each_file_is_valid_json(self):
+        """Every generated file must be parseable JSON array."""
+        for domain in DOMAINS:
+            for length in LENGTHS:
+                for lang in LANGS:
+                    path = _DATA_DIR / f"{domain}_{length}_{lang}.json"
+                    with open(path, encoding="utf-8") as f:
+                        data = json.load(f)
+                    assert isinstance(data, list), \
+                        f"{path.name}: not a JSON array"
+
+
+class TestGenerateScriptImportable:
+    """Verify generate_test_data.py can be imported and re-run."""
+
+    def test_module_imports(self):
+        sys.path.insert(0, str(Path(__file__).parent))
+        import generate_test_data as gtd
+        assert hasattr(gtd, "DOMAINS")
+        assert hasattr(gtd, "LENGTHS")
+        assert hasattr(gtd, "LANGUAGES")
+        assert hasattr(gtd, "main")
+
+    def test_domains_list(self):
+        sys.path.insert(0, str(Path(__file__).parent))
+        import generate_test_data as gtd
+        assert len(gtd.DOMAINS) == 6
+        assert "backend" in gtd.DOMAINS
+        assert "game-dev" in gtd.DOMAINS
+
+    def test_lengths_dict(self):
+        sys.path.insert(0, str(Path(__file__).parent))
+        import generate_test_data as gtd
+        assert gtd.LENGTHS["short"] == 10
+        assert gtd.LENGTHS["medium"] == 30
+        assert gtd.LENGTHS["long"] == 60
+
+    def test_reproducible_with_seed(self):
+        """Same seed should produce identical output."""
+        sys.path.insert(0, str(Path(__file__).parent))
+        import generate_test_data as gtd
+        import tempfile, shutil
+
+        # Monkey-patch OUT_DIR to a temp dir
+        orig_dir = gtd.OUT_DIR
+        tmp1 = Path(tempfile.mkdtemp())
+        tmp2 = Path(tempfile.mkdtemp())
+        try:
+            gtd.OUT_DIR = tmp1
+            gtd.random.seed(42)
+            gtd.OUT_DIR.mkdir(parents=True, exist_ok=True)
+            msgs1 = gtd._build_en_conversation("backend", 10)
+
+            gtd.OUT_DIR = tmp2
+            gtd.random.seed(42)
+            gtd.OUT_DIR.mkdir(parents=True, exist_ok=True)
+            msgs2 = gtd._build_en_conversation("backend", 10)
+
+            # Compare content
+            for i, (m1, m2) in enumerate(zip(msgs1, msgs2)):
+                assert m1["content"] == m2["content"], \
+                    f"Message {i} differs: '{m1['content'][:50]}' vs '{m2['content'][:50]}'"
+        finally:
+            gtd.OUT_DIR = orig_dir
+            shutil.rmtree(tmp1, ignore_errors=True)
+            shutil.rmtree(tmp2, ignore_errors=True)

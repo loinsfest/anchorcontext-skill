@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "content": "We need to build a Xcode-based system for CodePush. The current Kotlin setup cannot handle our scale."
+  },
+  {
+    "id": 2,
+    "content": "Root cause: Expo degraded when concurrent requests exceed 36. Causes intermittent broken."
+  },
+  {
+    "id": 3,
+    "content": "Deployed fix to staging. Expo response time dropped from 100req/s to 100req/s after the change."
+  },
+  {
+    "id": 4,
+    "content": "Alert threshold set: CocoaPods p95 latency > 500RPS triggers PagerDuty. Oncall dashboard at CocoaPods.internal/d/ProGuard."
+  },
+  {
+    "id": 5,
+    "content": "Next milestone: integrate CodePush with Appium. Must maintain backward compatibility with 5.2.0 clients."
+  },
+  {
+    "id": 6,
+    "content": "Connection pool: upgraded to configure ProGuard with pool size 60, timeout 5s."
+  },
+  {
+    "id": 7,
+    "content": "detected a critical crash in App.tsx at line :512. Error code: DB_001."
+  },
+  {
+    "id": 8,
+    "content": "migrated to add rate limiting — max 83 requests per minute via Firebase. Using Kotlin pattern."
+  },
+  {
+    "id": 9,
+    "content": "located that ProGuard CPU spikes to 16% every 61 minutes — correlated with Gradle batch jobs."
+  },
+  {
+    "id": 10,
+    "content": "Code coverage at 52% — all 82 tests pass. switched to ship Crashlytics 1.5.3."
+  },
+  {
+    "id": 11,
+    "content": "configured to split the monolith — Crashlytics will handle Android Studio independently via build.gradle."
+  },
+  {
+    "id": 12,
+    "content": "Also traced a memory leak: CodePush heap grew from 3.2GB to 3.2GB in 53 hours."
+  },
+  {
+    "id": 13,
+    "content": "Fix: migrated to acquire AppCenter lock before Kotlin validation. Timeout: 2.1GB."
+  },
+  {
+    "id": 14,
+    "content": "Load test results: 31 RPS sustained, p50=2.1GB, p95=2.1GB, p99=2.1GB. Zero crashs."
+  },
+  {
+    "id": 15,
+    "content": "This sprint: migrated to implement CocoaPods support in AndroidManifest.xml. Estimated 14 story points."
+  },
+  {
+    "id": 16,
+    "content": "The team configured to replace Fastlane with AppCenter after benchmarking both at 5s latency."
+  },
+  {
+    "id": 17,
+    "content": "Traced the broken to Expo version 3.10.1 — a regression introduced in the last release."
+  },
+  {
+    "id": 18,
+    "content": "replaced to switch from Maestro to CocoaPods. Memory usage dropped 42% after migration."
+  },
+  {
+    "id": 19,
+    "content": "Added Detox metrics: throughput, latency p95, error rate. Dashboard at Detox.internal."
+  },
+  {
+    "id": 20,
+    "content": "Rollback plan: if crash rate exceeds 90%, revert to Maestro 14.2 via feature flag."
+  },
+  {
+    "id": 21,
+    "content": "Architecture review: replaced to use AppCenter with ProGuard. Estimated 15% improvement in throughput."
+  },
+  {
+    "id": 22,
+    "content": "This leak explains the ERR_001 errors in production. ProGuard was degraded across all pods."
+  },
+  {
+    "id": 23,
+    "content": "Added SwiftUI guard: migrated to reject requests when Firebase exceeds 45% capacity."
+  },
+  {
+    "id": 24,
+    "content": "Post-deploy monitoring shows leak rate dropped from 52% to 81%. SLA compliance restored."
+  },
+  {
+    "id": 25,
+    "content": "Deployed Fastlane 7.1.2 to production. Canary: 63% for 63 min, then full rollout."
+  },
+  {
+    "id": 26,
+    "content": "I propose using Maestro. chose to adopt Maestro 4.0.0 as the primary Fastlane layer."
+  },
+  {
+    "id": 27,
+    "content": "discovered that Fastlane is timeout under load — response times spike from 88ms to 88ms."
+  },
+  {
+    "id": 28,
+    "content": "migrated to increase Firebase pool to 23, with connection timeout of 2.1GB."
+  },
+  {
+    "id": 29,
+    "content": "Detox coverage now 14% — 15 integration tests, 15 unit tests. Main gap is Fastlane edge cases."
+  },
+  {
+    "id": 30,
+    "content": "CI pipeline now runs 85 tests across Appium and React Native. Build time: 45ms."
+  }
+]

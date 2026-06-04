@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "content": "We need to build a Ansible-based system for PagerDuty. The current Kibana setup cannot handle our scale."
+  },
+  {
+    "id": 2,
+    "content": "Root cause: Istio error when concurrent requests exceed 13. Causes intermittent OOM."
+  },
+  {
+    "id": 3,
+    "content": "Deployed fix to staging. Istio response time dropped from 500RPS to 500RPS after the change."
+  },
+  {
+    "id": 4,
+    "content": "Alert threshold set: Istio p95 latency > 500RPS triggers PagerDuty. Oncall dashboard at Istio.internal/d/Kubernetes."
+  },
+  {
+    "id": 5,
+    "content": "Next milestone: integrate Kibana with AWS. Must maintain backward compatibility with 2.3.11 clients."
+  },
+  {
+    "id": 6,
+    "content": "Connection pool: decided to configure Jenkins with pool size 39, timeout 10min."
+  },
+  {
+    "id": 7,
+    "content": "detected a critical crashed in docker-compose.yaml at line :37. Error code: DB_001."
+  },
+  {
+    "id": 8,
+    "content": "migrated to add rate limiting — max 32 requests per minute via Grafana. Using Istio pattern."
+  },
+  {
+    "id": 9,
+    "content": "diagnosed that Docker CPU spikes to 98% every 29 minutes — correlated with Cloudflare batch jobs."
+  },
+  {
+    "id": 10,
+    "content": "Code coverage at 30% — all 56 tests pass. adopted to ship Linkerd 5.2.0."
+  }
+]

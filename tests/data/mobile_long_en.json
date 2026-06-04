@@ -1,0 +1,242 @@
+[
+  {
+    "id": 1,
+    "content": "We need to build a CodePush-based system for Crashlytics. The current ProGuard setup cannot handle our scale."
+  },
+  {
+    "id": 2,
+    "content": "Root cause: Crashlytics fail when concurrent requests exceed 27. Causes intermittent broken."
+  },
+  {
+    "id": 3,
+    "content": "Deployed fix to staging. SwiftUI response time dropped from 180MB to 180MB after the change."
+  },
+  {
+    "id": 4,
+    "content": "Alert threshold set: Flutter p95 latency > 80ms triggers PagerDuty. Oncall dashboard at Flutter.internal/d/Android Studio."
+  },
+  {
+    "id": 5,
+    "content": "Next milestone: integrate Kotlin with CocoaPods. Must maintain backward compatibility with 2.3.11 clients."
+  },
+  {
+    "id": 6,
+    "content": "Connection pool: chose to configure Flutter with pool size 86, timeout 200ms."
+  },
+  {
+    "id": 7,
+    "content": "traced a critical broken in fastlane.rb at line :1024. Error code: ERR_500."
+  },
+  {
+    "id": 8,
+    "content": "adopted to add rate limiting — max 62 requests per minute via Kotlin. Using ProGuard pattern."
+  },
+  {
+    "id": 9,
+    "content": "discovered that Fastlane CPU spikes to 76% every 26 minutes — correlated with Xcode batch jobs."
+  },
+  {
+    "id": 10,
+    "content": "Code coverage at 64% — all 26 tests pass. configured to ship ProGuard 14.2."
+  },
+  {
+    "id": 11,
+    "content": "chose to split the monolith — React Native will handle Xcode independently via App.tsx."
+  },
+  {
+    "id": 12,
+    "content": "Also noticed a memory hang: Flutter heap grew from 45ms to 45ms in 89 hours."
+  },
+  {
+    "id": 13,
+    "content": "Fix: deployed to acquire Gradle lock before Crashlytics validation. Timeout: 150ms."
+  },
+  {
+    "id": 14,
+    "content": "Load test results: 74 RPS sustained, p50=5s, p95=5s, p99=5s. Zero crashs."
+  },
+  {
+    "id": 15,
+    "content": "This sprint: configured to implement Kotlin support in build.gradle. Estimated 21 story points."
+  },
+  {
+    "id": 16,
+    "content": "The team upgraded to replace Expo with Crashlytics after benchmarking both at 100req/s latency."
+  },
+  {
+    "id": 17,
+    "content": "Traced the missing to Fastlane version 2.3.11 — a regression introduced in the last release."
+  },
+  {
+    "id": 18,
+    "content": "adopted to switch from Appium to React Native. Memory usage dropped 62% after migration."
+  },
+  {
+    "id": 19,
+    "content": "Added Flutter metrics: throughput, latency p95, error rate. Dashboard at Flutter.internal."
+  },
+  {
+    "id": 20,
+    "content": "Rollback plan: if error rate exceeds 34%, revert to CodePush 5.2.0 via feature flag."
+  },
+  {
+    "id": 21,
+    "content": "Architecture review: migrated to use Detox with Android Studio. Estimated 86% improvement in throughput."
+  },
+  {
+    "id": 22,
+    "content": "This error explains the ERR_103 errors in production. Detox was missing across all pods."
+  },
+  {
+    "id": 23,
+    "content": "Added Firebase guard: switched to reject requests when Crashlytics exceeds 16% capacity."
+  },
+  {
+    "id": 24,
+    "content": "Post-deploy monitoring shows missing rate dropped from 26% to 95%. SLA compliance restored."
+  },
+  {
+    "id": 25,
+    "content": "Deployed Expo 5.2.0 to production. Canary: 18% for 18 min, then full rollout."
+  },
+  {
+    "id": 26,
+    "content": "I propose using Xcode. adopted to adopt Xcode 2.8.0 as the primary Appium layer."
+  },
+  {
+    "id": 27,
+    "content": "located that Xcode is degraded under load — response times spike from 45ms to 45ms."
+  },
+  {
+    "id": 28,
+    "content": "upgraded to increase CodePush pool to 16, with connection timeout of 5s."
+  },
+  {
+    "id": 29,
+    "content": "Detox coverage now 78% — 70 integration tests, 70 unit tests. Main gap is SwiftUI edge cases."
+  },
+  {
+    "id": 30,
+    "content": "CI pipeline now runs 76 tests across Flutter and Appium. Build time: 80ms."
+  },
+  {
+    "id": 31,
+    "content": "We need to build a Fastlane-based system for CocoaPods. The current AppCenter setup cannot handle our scale."
+  },
+  {
+    "id": 32,
+    "content": "Root cause: Appium timeout when concurrent requests exceed 56. Causes intermittent crash."
+  },
+  {
+    "id": 33,
+    "content": "Deployed fix to staging. Detox response time dropped from 100req/s to 100req/s after the change."
+  },
+  {
+    "id": 34,
+    "content": "Alert threshold set: Firebase p95 latency > 3.2GB triggers PagerDuty. Oncall dashboard at Firebase.internal/d/Expo."
+  },
+  {
+    "id": 35,
+    "content": "Next milestone: integrate ProGuard with React Native. Must maintain backward compatibility with 14.2 clients."
+  },
+  {
+    "id": 36,
+    "content": "Connection pool: decided to configure AppCenter with pool size 67, timeout 5s."
+  },
+  {
+    "id": 37,
+    "content": "noticed a critical hang in App.tsx at line :103. Error code: ERR_500."
+  },
+  {
+    "id": 38,
+    "content": "migrated to add rate limiting — max 61 requests per minute via Maestro. Using CocoaPods pattern."
+  },
+  {
+    "id": 39,
+    "content": "located that Fastlane CPU spikes to 96% every 13 minutes — correlated with CodePush batch jobs."
+  },
+  {
+    "id": 40,
+    "content": "Code coverage at 47% — all 88 tests pass. switched to ship Flutter 7.1.2."
+  },
+  {
+    "id": 41,
+    "content": "replaced to split the monolith — Fastlane will handle Expo independently via AndroidManifest.xml."
+  },
+  {
+    "id": 42,
+    "content": "Also located a memory leak: CocoaPods heap grew from 3.2GB to 3.2GB in 81 hours."
+  },
+  {
+    "id": 43,
+    "content": "Fix: decided to acquire CodePush lock before React Native validation. Timeout: 150ms."
+  },
+  {
+    "id": 44,
+    "content": "Load test results: 14 RPS sustained, p50=3.2GB, p95=3.2GB, p99=3.2GB. Zero leaks."
+  },
+  {
+    "id": 45,
+    "content": "This sprint: replaced to implement CodePush support in AndroidManifest.xml. Estimated 89 story points."
+  },
+  {
+    "id": 46,
+    "content": "The team decided to replace CocoaPods with Maestro after benchmarking both at 100req/s latency."
+  },
+  {
+    "id": 47,
+    "content": "Traced the timeout to CodePush version 3.10.1 — a regression introduced in the last release."
+  },
+  {
+    "id": 48,
+    "content": "replaced to switch from CodePush to ProGuard. Memory usage dropped 31% after migration."
+  },
+  {
+    "id": 49,
+    "content": "Added Expo metrics: throughput, latency p95, error rate. Dashboard at Expo.internal."
+  },
+  {
+    "id": 50,
+    "content": "Rollback plan: if leak rate exceeds 40%, revert to Flutter 2.8.0 via feature flag."
+  },
+  {
+    "id": 51,
+    "content": "Architecture review: decided to use Flutter with Gradle. Estimated 46% improvement in throughput."
+  },
+  {
+    "id": 52,
+    "content": "This fail explains the ERR_042 errors in production. Crashlytics was missing across all pods."
+  },
+  {
+    "id": 53,
+    "content": "Added Expo guard: switched to reject requests when Fastlane exceeds 35% capacity."
+  },
+  {
+    "id": 54,
+    "content": "Post-deploy monitoring shows hang rate dropped from 13% to 54%. SLA compliance restored."
+  },
+  {
+    "id": 55,
+    "content": "Deployed ProGuard 3.10.1 to production. Canary: 71% for 71 min, then full rollout."
+  },
+  {
+    "id": 56,
+    "content": "I propose using Detox. chose to adopt Detox 3.10.1 as the primary SwiftUI layer."
+  },
+  {
+    "id": 57,
+    "content": "identified that Fastlane is leak under load — response times spike from 3.2GB to 3.2GB."
+  },
+  {
+    "id": 58,
+    "content": "replaced to increase Maestro pool to 44, with connection timeout of 2.1GB."
+  },
+  {
+    "id": 59,
+    "content": "Flutter coverage now 67% — 33 integration tests, 33 unit tests. Main gap is Appium edge cases."
+  },
+  {
+    "id": 60,
+    "content": "CI pipeline now runs 72 tests across Appium and Fastlane. Build time: 200ms."
+  }
+]

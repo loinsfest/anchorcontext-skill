@@ -89,3 +89,14 @@ Started: 2026-06-03
   - For graph-based link traversal tests, use ≤3 messages with only non-FACT/non-STOP/non-GENERIC verbs close to proper nouns. This ensures both ends of each link survive Phase 4 judge selection.
   - Test totals: 374 tests, 1.01s, all passing.
 ---
+
+## 2026-06-04 12:00 - US-007
+- What was implemented: Created tests/generate_test_data.py — a deterministic (seed=42) conversation generator producing 36 JSON files (6 domains x 3 lengths x 2 languages). Each conversation contains decision verbs, discovery verbs, anomaly verbs, and data values (versions, error codes, numbers with units, line numbers). Added 206 parametrized tests across 3 test classes (TestGeneratedDataExists, TestGeneratedDataContent, TestGenerateScriptImportable) verifying file counts, message structure, verb presence, data value types, and reproducibility.
+- Files changed: tests/generate_test_data.py (new, ~420 lines), tests/data/ (new directory with 36 JSON files), tests/test_core.py (+159 lines: 3 new test classes), prd.json (US-007 passes: true)
+- **Learnings for future iterations:**
+  - Template-based generation with random parameter substitution is effective but requires careful placeholder naming — mixed context placeholders (e.g., using `number_unit` in a monitoring context that expects latency) can produce semantically awkward sentences. Each template phase should use context-appropriate value pools.
+  - `sys.path.insert` is needed in test files to import `generate_test_data` as a module from the tests/ directory. Tests use this to verify module structure and seed-based reproducibility.
+  - The Chinese verb lexicon in the codebase uses `[一-鿿]{2,8}` regex — Chinese templates must use ≥2 char verbs to be recognized. Single-char verbs like `改` won't match the regex.
+  - For parametrized tests across 36 files with 3 dimensions (domain x length x lang), using `@pytest.mark.parametrize` with separate test methods per assertion type gives clear failure messages. Stacking all 3 dimensions in one parametrize leads to 36× assertions that are hard to debug.
+  - Test totals: 580 tests, 1.73s, all passing.
+---

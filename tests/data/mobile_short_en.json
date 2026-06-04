@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "content": "We need to build a Xcode-based system for Fastlane. The current Flutter setup cannot handle our scale."
+  },
+  {
+    "id": 2,
+    "content": "Root cause: Android Studio leak when concurrent requests exceed 60. Causes intermittent broken."
+  },
+  {
+    "id": 3,
+    "content": "Deployed fix to staging. Android Studio response time dropped from 3.2GB to 3.2GB after the change."
+  },
+  {
+    "id": 4,
+    "content": "Alert threshold set: SwiftUI p95 latency > 500RPS triggers PagerDuty. Oncall dashboard at SwiftUI.internal/d/Firebase."
+  },
+  {
+    "id": 5,
+    "content": "Next milestone: integrate Kotlin with AppCenter. Must maintain backward compatibility with 4.0.0 clients."
+  },
+  {
+    "id": 6,
+    "content": "Connection pool: adopted to configure Maestro with pool size 25, timeout 10min."
+  },
+  {
+    "id": 7,
+    "content": "noticed a critical broken in build.gradle at line :88. Error code: WARN_007."
+  },
+  {
+    "id": 8,
+    "content": "upgraded to add rate limiting — max 44 requests per minute via Kotlin. Using Flutter pattern."
+  },
+  {
+    "id": 9,
+    "content": "found that Maestro CPU spikes to 80% every 23 minutes — correlated with Flutter batch jobs."
+  },
+  {
+    "id": 10,
+    "content": "Code coverage at 38% — all 39 tests pass. decided to ship ProGuard 2.3.11."
+  }
+]

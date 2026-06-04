@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "content": "We need to build a Figma-based system for Radix. The current Vitest setup cannot handle our scale."
+  },
+  {
+    "id": 2,
+    "content": "Root cause: TanStack broken when concurrent requests exceed 15. Causes intermittent degraded."
+  },
+  {
+    "id": 3,
+    "content": "Deployed fix to staging. Zustand response time dropped from 100req/s to 100req/s after the change."
+  },
+  {
+    "id": 4,
+    "content": "Alert threshold set: Figma p95 latency > 80ms triggers PagerDuty. Oncall dashboard at Figma.internal/d/Redux."
+  },
+  {
+    "id": 5,
+    "content": "Next milestone: integrate Zustand with WCAG. Must maintain backward compatibility with 5.2.0 clients."
+  },
+  {
+    "id": 6,
+    "content": "Connection pool: decided to configure Chromatic with pool size 31, timeout 2.1GB."
+  },
+  {
+    "id": 7,
+    "content": "noticed a critical fail in vite.config.ts at line :88. Error code: ERR_103."
+  },
+  {
+    "id": 8,
+    "content": "chose to add rate limiting — max 56 requests per minute via Vitest. Using Figma pattern."
+  },
+  {
+    "id": 9,
+    "content": "identified that Radix CPU spikes to 57% every 76 minutes — correlated with Vitest batch jobs."
+  },
+  {
+    "id": 10,
+    "content": "Code coverage at 53% — all 34 tests pass. opted for to ship Tailwind 2.3.11."
+  }
+]

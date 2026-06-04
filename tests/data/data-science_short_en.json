@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "content": "We need to build a scikit-learn-based system for TensorFlow. The current Spark setup cannot handle our scale."
+  },
+  {
+    "id": 2,
+    "content": "Root cause: MLflow missing when concurrent requests exceed 20. Causes intermittent drift."
+  },
+  {
+    "id": 3,
+    "content": "Deployed fix to staging. NumPy response time dropped from 100req/s to 100req/s after the change."
+  },
+  {
+    "id": 4,
+    "content": "Alert threshold set: TensorFlow p95 latency > 500RPS triggers PagerDuty. Oncall dashboard at TensorFlow.internal/d/Optuna."
+  },
+  {
+    "id": 5,
+    "content": "Next milestone: integrate dbt with Snowflake. Must maintain backward compatibility with 4.0.0 clients."
+  },
+  {
+    "id": 6,
+    "content": "Connection pool: configured to configure Snowflake with pool size 11, timeout 150ms."
+  },
+  {
+    "id": 7,
+    "content": "detected a critical error in notebook.ipynb at line :1024. Error code: ERR_001."
+  },
+  {
+    "id": 8,
+    "content": "decided to add rate limiting — max 45 requests per minute via Databricks. Using scikit-learn pattern."
+  },
+  {
+    "id": 9,
+    "content": "identified that SHAP CPU spikes to 93% every 24 minutes — correlated with Jupyter batch jobs."
+  },
+  {
+    "id": 10,
+    "content": "Code coverage at 40% — all 86 tests pass. decided to ship TensorFlow 7.1.2."
+  }
+]

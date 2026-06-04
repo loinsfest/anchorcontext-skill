@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "content": "We need to build a Wwise-based system for Maya. The current EOS setup cannot handle our scale."
+  },
+  {
+    "id": 2,
+    "content": "Root cause: Houdini hang when concurrent requests exceed 23. Causes intermittent timeout."
+  },
+  {
+    "id": 3,
+    "content": "Deployed fix to staging. Godot response time dropped from 180MB to 180MB after the change."
+  },
+  {
+    "id": 4,
+    "content": "Alert threshold set: Maya p95 latency > 150ms triggers PagerDuty. Oncall dashboard at Maya.internal/d/PlayFab."
+  },
+  {
+    "id": 5,
+    "content": "Next milestone: integrate EOS with OpenGL. Must maintain backward compatibility with 2.8.0 clients."
+  },
+  {
+    "id": 6,
+    "content": "Connection pool: decided to configure Blender with pool size 69, timeout 500RPS."
+  },
+  {
+    "id": 7,
+    "content": "detected a critical missing in level.json at line :88. Error code: WARN_007."
+  },
+  {
+    "id": 8,
+    "content": "upgraded to add rate limiting — max 90 requests per minute via OpenGL. Using EOS pattern."
+  },
+  {
+    "id": 9,
+    "content": "located that Houdini CPU spikes to 56% every 20 minutes — correlated with EOS batch jobs."
+  },
+  {
+    "id": 10,
+    "content": "Code coverage at 86% — all 95 tests pass. optimized to ship Houdini 14.2."
+  }
+]
