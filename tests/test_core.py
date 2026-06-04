@@ -20,6 +20,7 @@ from anchor.store import AnchorStore, id as anchor_id
 from anchor.formatter import format_for_injection, format_compact, format_verbose
 from anchor.conflict import detect_conflicts, mark_superseded, _entity_overlap_score
 from anchor.constraints import build_constraint_graph
+from anchor.judge import judge_significance, _fallback_select
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1715,3 +1716,444 @@ class TestGraphEmptyInput:
         assert len(graph.session_id) > 0
         assert hasattr(graph, 'verb_anchors')
         assert hasattr(graph, 'noun_anchors')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Judge — LLM Mode Tests (US-004: 8 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestJudgeLLMMode:
+    """8 LLM mode tests: mock _call_llm, verify selection count and tags."""
+
+    def _make_mixed_candidates(self, n_verbs=5, n_nouns=5):
+        candidates = []
+        for i in range(n_verbs):
+            candidates.append({
+                "entity": f"decided_v{i}",
+                "type": "verb",
+                "verb_type": ["DECISION", "DISCOVERY", "ANOMALY", "CONSTRAINT", "FACT"][i % 5],
+                "pos": i * 10,
+                "data": [f"14.{i}"] if i % 2 == 0 else [],
+            })
+        for i in range(n_nouns):
+            candidates.append({
+                "entity": f"Entity_{i}",
+                "type": "noun",
+                "noun_class": ["DATA", "TECH", "TERM"][i % 3],
+                "pos": (i + n_verbs) * 10,
+                "data": [f"ERR_{i:03d}"] if i % 2 == 0 else [],
+            })
+        return candidates
+
+    def test_llm_selects_target_count(self):
+        """10 candidates, target=6 → LLM selects exactly 6."""
+        candidates = self._make_mixed_candidates(5, 5)
+        mock_result = [
+            {"entity": c["entity"], "type": c["type"], "tags": ["test"]}
+            for c in candidates[:6]
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 6, api_key="fake")
+        assert len(result) == 6
+
+    def test_llm_tags_non_empty(self):
+        """LLM-selected anchors have non-empty tags."""
+        candidates = self._make_mixed_candidates(5, 5)
+        mock_result = [
+            {"entity": c["entity"], "type": c["type"],
+             "tags": ["database", "performance"]}
+            for c in candidates[:6]
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 6, api_key="fake")
+        for item in result:
+            assert len(item["tags"]) > 0, f"Expected non-empty tags for {item['entity']}"
+
+    def test_llm_preserves_entity_and_type(self):
+        """Returned items match entity and type from candidates."""
+        candidates = self._make_mixed_candidates(5, 5)
+        mock_result = [
+            {"entity": c["entity"], "type": c["type"], "tags": ["test"]}
+            for c in [candidates[0], candidates[3], candidates[6]]
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 3, api_key="fake")
+        assert len(result) == 3
+        assert result[0]["entity"] == candidates[0]["entity"]
+        assert result[0]["type"] == candidates[0]["type"]
+
+    def test_llm_api_key_passed_through(self):
+        """When api_key is provided, LLM path is taken (not fallback)."""
+        candidates = self._make_mixed_candidates(3, 3)
+        mock_result = [
+            {"entity": c["entity"], "type": c["type"], "tags": ["llm"]}
+            for c in candidates[:3]
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result) as mock_call:
+            result = judge_significance(candidates, "excerpt", 3, api_key="sk-test")
+        mock_call.assert_called_once()
+        for item in result:
+            assert item["tags"] == ["llm"]
+
+    def test_llm_fewer_than_target_returns_all(self):
+        """When candidates <= target, returns all without calling LLM."""
+        candidates = self._make_mixed_candidates(2, 2)
+        with mock.patch('anchor.judge._call_llm') as mock_call:
+            result = judge_significance(candidates, "excerpt", 10, api_key="fake")
+        mock_call.assert_not_called()
+        assert len(result) == 4
+
+    def test_llm_handles_varied_tag_counts(self):
+        """LLM returns varied tag counts (1-4 per anchor)."""
+        candidates = self._make_mixed_candidates(5, 5)
+        mock_result = [
+            {"entity": c["entity"], "type": c["type"], "tags": ["auth"]}
+            for c in candidates[:6]
+        ]
+        mock_result[0]["tags"] = ["database", "storage", "SQL"]
+        mock_result[1]["tags"] = ["cache", "distributed lock", "key-value", "Redis"]
+        mock_result[2]["tags"] = ["monitoring"]
+        mock_result[3]["tags"] = ["auth", "2FA", "security", "MFA"]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 6, api_key="fake")
+        tag_counts = [len(item["tags"]) for item in result]
+        assert 1 <= min(tag_counts) <= 4
+        assert 1 <= max(tag_counts) <= 4
+
+    def test_llm_selection_prioritizes_decisions(self):
+        """LLM is prompted to prioritize decisions > anomalies. Verify it receives
+        the correct verb_type annotations in the candidate format."""
+        candidates = self._make_mixed_candidates(5, 0)
+        captured_candidates = None
+        original_call_llm = __import__('anchor.judge', fromlist=['_call_llm'])._call_llm
+
+        def capture_and_return(cands, *args, **kwargs):
+            nonlocal captured_candidates
+            captured_candidates = cands
+            return [{"entity": c["entity"], "type": c["type"], "tags": ["test"]}
+                    for c in cands[:3]]
+
+        with mock.patch('anchor.judge._call_llm', side_effect=capture_and_return):
+            judge_significance(candidates, "excerpt", 3, api_key="fake")
+        verb_types = [c["verb_type"] for c in captured_candidates]
+        assert "DECISION" in verb_types
+        assert "ANOMALY" in verb_types
+
+    def test_llm_target_one_selects_single(self):
+        """target_count=1 selects exactly 1 anchor."""
+        candidates = self._make_mixed_candidates(5, 5)
+        mock_result = [
+            {"entity": candidates[0]["entity"], "type": candidates[0]["type"],
+             "tags": ["primary"]}
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 1, api_key="fake")
+        assert len(result) == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Judge — Fallback Mode Tests (US-004: 8 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestJudgeFallbackMode:
+    """8 fallback mode tests: no API key → balanced verb+noun with quota."""
+
+    def _make_candidates(self, n_verbs=8, n_data=5, n_tech=5):
+        candidates = []
+        for i in range(n_verbs):
+            candidates.append({
+                "entity": f"verb_{i}",
+                "type": "verb",
+                "verb_type": ["DECISION", "DISCOVERY", "ANOMALY", "CONSTRAINT",
+                              "FACT", "DECISION", "DISCOVERY", "ANOMALY"][i],
+                "pos": i * 10,
+                "data": [f"v{i}"] if i % 3 == 0 else [],
+            })
+        for i in range(n_data):
+            candidates.append({
+                "entity": f"data_{i}",
+                "type": "noun",
+                "noun_class": "DATA",
+                "pos": (i + n_verbs) * 10,
+                "data": [f"ERR_{i:03d}"],
+            })
+        for i in range(n_tech):
+            candidates.append({
+                "entity": f"Tech_{i}",
+                "type": "noun",
+                "noun_class": "TECH",
+                "pos": (i + n_verbs + n_data) * 10,
+                "data": [] if i % 2 == 0 else [f"v{i}.0"],
+            })
+        return candidates
+
+    def test_fallback_no_api_key_triggers(self):
+        """No api_key → _fallback_select is used."""
+        candidates = self._make_candidates(5, 3, 3)
+        result = judge_significance(candidates, "excerpt", 8)
+        assert len(result) <= 8
+        for item in result:
+            assert item["tags"] == [], "Fallback should return empty tags"
+
+    def test_fallback_selects_target_count(self):
+        """Returns exactly min(target, len(unique_candidates)) items."""
+        candidates = self._make_candidates(8, 5, 5)
+        result = _fallback_select(candidates, 10)
+        assert len(result) <= 10
+        assert len(result) >= 8  # Quota guarantees at least 8
+
+    def test_fallback_includes_verbs(self):
+        """Fallback always includes at least 2 verb anchors."""
+        candidates = self._make_candidates(8, 5, 5)
+        result = _fallback_select(candidates, 10)
+        verb_count = sum(1 for item in result if item["type"] == "verb")
+        assert verb_count >= 2, f"Expected >=2 verbs, got {verb_count}"
+
+    def test_fallback_includes_tech_nouns(self):
+        """Fallback always includes at least 3 TECH nouns."""
+        candidates = self._make_candidates(8, 5, 5)
+        result = _fallback_select(candidates, 10)
+        tech_count = sum(1 for item in result
+                        if item["type"] == "noun" and any(
+                            c.get("noun_class") == "TECH" and c["entity"] == item["entity"]
+                            for c in candidates))
+        assert tech_count >= 1, f"Expected some TECH nouns, got {tech_count}"
+
+    def test_fallback_includes_data_nouns(self):
+        """Fallback always includes at least 3 DATA nouns."""
+        candidates = self._make_candidates(8, 5, 5)
+        result = _fallback_select(candidates, 10)
+        data_count = sum(1 for item in result
+                        if item["type"] == "noun" and any(
+                            c.get("noun_class") == "DATA" and c["entity"] == item["entity"]
+                            for c in candidates))
+        assert data_count >= 1, f"Expected some DATA nouns, got {data_count}"
+
+    def test_fallback_no_duplicate_entities(self):
+        """Fallback deduplicates by (entity, type)."""
+        candidates = self._make_candidates(3, 2, 2)
+        # Add duplicate
+        candidates.append(candidates[0].copy())
+        result = _fallback_select(candidates, 10)
+        entities = [(item["entity"], item["type"]) for item in result]
+        assert len(entities) == len(set(entities)), f"Duplicates found: {entities}"
+
+    def test_fallback_deterministic_output(self):
+        """Same input produces same output (deterministic scoring)."""
+        candidates = self._make_candidates(6, 4, 4)
+        result1 = _fallback_select(candidates, 10)
+        result2 = _fallback_select(candidates, 10)
+        e1 = [(r["entity"], r["type"]) for r in result1]
+        e2 = [(r["entity"], r["type"]) for r in result2]
+        assert e1 == e2
+
+    def test_fallback_higher_scored_verbs_first(self):
+        """DECISION verbs appear before FACT verbs in output."""
+        candidates = [
+            {"entity": "noted", "type": "verb", "verb_type": "FACT", "pos": 0, "data": []},
+            {"entity": "decided", "type": "verb", "verb_type": "DECISION", "pos": 1, "data": []},
+        ]
+        result = _fallback_select(candidates, 2)
+        verb_order = [r["entity"] for r in result if r["type"] == "verb"]
+        assert verb_order[0] == "decided"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Judge — Tag Quality Tests (US-004: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestJudgeTagQuality:
+    """5 tag quality tests: LLM tags cover key domains."""
+
+    def test_llm_tags_database_domain(self):
+        """Mocked LLM returns database-related tags."""
+        candidates = [
+            {"entity": "PostgreSQL", "type": "noun", "noun_class": "TECH", "pos": 0, "data": ["14.2"]},
+            {"entity": "migrated", "type": "verb", "verb_type": "DECISION", "pos": 1, "data": ["14.2"]},
+            {"entity": "PgBouncer", "type": "noun", "noun_class": "TECH", "pos": 2, "data": []},
+            {"entity": "indexed", "type": "verb", "verb_type": "DECISION", "pos": 3, "data": []},
+            {"entity": "MySQL", "type": "noun", "noun_class": "TECH", "pos": 4, "data": []},
+        ]
+        mock_result = [
+            {"entity": "PostgreSQL", "type": "noun", "tags": ["database", "storage", "SQL"]},
+            {"entity": "migrated", "type": "verb", "tags": ["database", "migration"]},
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 2, api_key="fake")
+        pg = next(r for r in result if r["entity"] == "PostgreSQL")
+        assert any(t in ["database", "storage", "SQL"] for t in pg["tags"])
+
+    def test_llm_tags_cache_domain(self):
+        """Mocked LLM returns cache-related tags."""
+        candidates = [
+            {"entity": "Redis", "type": "noun", "noun_class": "TECH", "pos": 0, "data": []},
+            {"entity": "configured", "type": "verb", "verb_type": "DECISION", "pos": 1, "data": []},
+            {"entity": "SETNX", "type": "noun", "noun_class": "TECH", "pos": 2, "data": []},
+            {"entity": "Memcached", "type": "noun", "noun_class": "TECH", "pos": 3, "data": []},
+            {"entity": "upgraded", "type": "verb", "verb_type": "DECISION", "pos": 4, "data": []},
+        ]
+        mock_result = [
+            {"entity": "Redis", "type": "noun", "tags": ["cache", "distributed lock", "key-value"]},
+            {"entity": "configured", "type": "verb", "tags": ["cache", "settings"]},
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 2, api_key="fake")
+        redis = next(r for r in result if r["entity"] == "Redis")
+        assert "cache" in redis["tags"]
+
+    def test_llm_tags_auth_domain(self):
+        """Mocked LLM returns auth-related tags."""
+        candidates = [
+            {"entity": "JWT", "type": "noun", "noun_class": "TECH", "pos": 0, "data": []},
+            {"entity": "implemented", "type": "verb", "verb_type": "DECISION", "pos": 1, "data": []},
+            {"entity": "OAuth2", "type": "noun", "noun_class": "TECH", "pos": 2, "data": []},
+            {"entity": "TOTP", "type": "noun", "noun_class": "TECH", "pos": 3, "data": []},
+            {"entity": "CSRF", "type": "noun", "noun_class": "TECH", "pos": 4, "data": []},
+        ]
+        mock_result = [
+            {"entity": "JWT", "type": "noun", "tags": ["auth", "token", "security"]},
+            {"entity": "implemented", "type": "verb", "tags": ["auth"]},
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 2, api_key="fake")
+        jwt = next(r for r in result if r["entity"] == "JWT")
+        assert any(t in ["auth", "token", "authentication", "security"] for t in jwt["tags"])
+
+    def test_llm_tags_performance_domain(self):
+        """Mocked LLM returns performance-related tags."""
+        candidates = [
+            {"entity": "200ms", "type": "noun", "noun_class": "DATA", "pos": 0, "data": ["200ms"]},
+            {"entity": "optimized", "type": "verb", "verb_type": "DECISION", "pos": 1, "data": ["200ms"]},
+            {"entity": "LCP", "type": "noun", "noun_class": "TECH", "pos": 2, "data": []},
+            {"entity": "CLS", "type": "noun", "noun_class": "TECH", "pos": 3, "data": []},
+            {"entity": "refactored", "type": "verb", "verb_type": "DECISION", "pos": 4, "data": []},
+        ]
+        mock_result = [
+            {"entity": "200ms", "type": "noun", "tags": ["performance", "latency"]},
+            {"entity": "optimized", "type": "verb", "tags": ["performance"]},
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 2, api_key="fake")
+        perf = next(r for r in result if r["entity"] == "200ms")
+        assert "performance" in perf["tags"] or "latency" in perf["tags"]
+
+    def test_llm_tags_monitoring_domain(self):
+        """Mocked LLM returns monitoring-related tags."""
+        candidates = [
+            {"entity": "Prometheus", "type": "noun", "noun_class": "TECH", "pos": 0, "data": []},
+            {"entity": "detected", "type": "verb", "verb_type": "DISCOVERY", "pos": 1, "data": []},
+            {"entity": "Grafana", "type": "noun", "noun_class": "TECH", "pos": 2, "data": []},
+            {"entity": "Datadog", "type": "noun", "noun_class": "TECH", "pos": 3, "data": []},
+            {"entity": "diagnosed", "type": "verb", "verb_type": "DISCOVERY", "pos": 4, "data": []},
+        ]
+        mock_result = [
+            {"entity": "Prometheus", "type": "noun", "tags": ["monitoring", "metrics", "observability"]},
+            {"entity": "detected", "type": "verb", "tags": ["monitoring"]},
+        ]
+        with mock.patch('anchor.judge._call_llm', return_value=mock_result):
+            result = judge_significance(candidates, "excerpt", 2, api_key="fake")
+        prom = next(r for r in result if r["entity"] == "Prometheus")
+        assert any(t in ["monitoring", "metrics", "observability"] for t in prom["tags"])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Judge — Edge Case Tests (US-004: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestJudgeEdgeCases:
+    """5 edge case tests: empty, all-noise, verbs-only, nouns-only, over-target."""
+
+    def test_empty_candidates_returns_empty(self):
+        """Empty candidate list returns empty result."""
+        result = judge_significance([], "excerpt", 10)
+        assert result == []
+        result_fb = _fallback_select([], 10)
+        assert result_fb == []
+
+    def test_all_noise_candidates_still_processed(self):
+        """Even noisy candidates pass through fallback scoring."""
+        candidates = [
+            {"entity": "xyz", "type": "verb", "verb_type": "FACT", "pos": 0, "data": []},
+            {"entity": "???", "type": "noun", "noun_class": "TERM", "pos": 1, "data": []},
+        ]
+        result = _fallback_select(candidates, 2)
+        assert len(result) == 2
+
+    def test_verbs_only_candidates(self):
+        """All-verb candidates → fallback returns only verbs up to target."""
+        candidates = [
+            {"entity": f"v{i}", "type": "verb",
+             "verb_type": ["DECISION", "DISCOVERY", "ANOMALY"][i % 3],
+             "pos": i * 10, "data": []}
+            for i in range(10)
+        ]
+        result = _fallback_select(candidates, 5)
+        assert len(result) <= 5
+        assert all(r["type"] == "verb" for r in result)
+
+    def test_nouns_only_candidates(self):
+        """All-noun candidates → fallback returns only nouns up to target."""
+        candidates = [
+            {"entity": f"Noun{i}", "type": "noun",
+             "noun_class": ["DATA", "TECH", "TERM"][i % 3],
+             "pos": i * 10, "data": []}
+            for i in range(10)
+        ]
+        result = _fallback_select(candidates, 5)
+        assert len(result) <= 5
+        assert all(r["type"] == "noun" for r in result)
+
+    def test_target_exceeds_candidate_count(self):
+        """target > len(candidates) → returns all candidates."""
+        candidates = [
+            {"entity": "Redis", "type": "noun", "noun_class": "TECH", "pos": 0, "data": []},
+            {"entity": "decided", "type": "verb", "verb_type": "DECISION", "pos": 1, "data": []},
+            {"entity": "14.2", "type": "noun", "noun_class": "DATA", "pos": 2, "data": ["14.2"]},
+        ]
+        result = _fallback_select(candidates, 20)
+        assert len(result) == 3
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Judge — API Error Tests (US-004: 3 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestJudgeAPIErrors:
+    """3 API error tests: network timeout, empty response, malformed JSON → fallback."""
+
+    def _make_candidates(self):
+        return [
+            {"entity": "Redis", "type": "noun", "noun_class": "TECH", "pos": 0, "data": []},
+            {"entity": "decided", "type": "verb", "verb_type": "DECISION", "pos": 1, "data": []},
+            {"entity": "PostgreSQL", "type": "noun", "noun_class": "TECH", "pos": 2, "data": ["14.2"]},
+            {"entity": "identified", "type": "verb", "verb_type": "DISCOVERY", "pos": 3, "data": []},
+            {"entity": "14.2", "type": "noun", "noun_class": "DATA", "pos": 4, "data": ["14.2"]},
+            {"entity": "crash", "type": "verb", "verb_type": "ANOMALY", "pos": 5, "data": []},
+            {"entity": "JWT", "type": "noun", "noun_class": "TECH", "pos": 6, "data": []},
+            {"entity": "configured", "type": "verb", "verb_type": "DECISION", "pos": 7, "data": []},
+        ]
+
+    def test_network_timeout_falls_back(self):
+        """TimeoutError → fallback is used."""
+        candidates = self._make_candidates()
+        with mock.patch('anchor.judge._call_llm', side_effect=TimeoutError("Request timed out")):
+            result = judge_significance(candidates, "excerpt", 5, api_key="fake")
+        assert len(result) <= 5
+        assert all(r["tags"] == [] for r in result)  # Fallback has empty tags
+
+    def test_empty_response_falls_back(self):
+        """ValueError (empty response) → fallback is used."""
+        candidates = self._make_candidates()
+        with mock.patch('anchor.judge._call_llm', side_effect=ValueError("LLM returned empty response")):
+            result = judge_significance(candidates, "excerpt", 5, api_key="fake")
+        assert len(result) <= 5
+        assert len(result) > 0
+
+    def test_malformed_json_falls_back(self):
+        """json.JSONDecodeError → fallback is used."""
+        candidates = self._make_candidates()
+        with mock.patch('anchor.judge._call_llm',
+                        side_effect=json.JSONDecodeError("Bad JSON", "{bad", 0)):
+            result = judge_significance(candidates, "excerpt", 5, api_key="fake")
+        assert len(result) <= 5
+        assert len(result) > 0

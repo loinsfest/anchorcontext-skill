@@ -50,3 +50,14 @@ Started: 2026-06-03
   - Fallback judge selection is deterministic: top 2 verbs + top 3 tech nouns + top 3 data nouns guaranteed (8 minimum), rest filled by score.
   - Test totals: 297 tests, 0.60s, all passing.
 ---
+
+## 2026-06-04 10:15 - US-004
+- What was implemented: Added 29 judge tests across 5 test classes covering LLM mode (8 tests), fallback mode (8 tests), tag quality (5 tests), edge cases (5 tests), and API error handling (3 tests).
+- Files changed: tests/test_core.py (+220 lines: TestJudgeLLMMode, TestJudgeFallbackMode, TestJudgeTagQuality, TestJudgeEdgeCases, TestJudgeAPIErrors), prd.json (US-004 passes: true)
+- **Learnings for future iterations:**
+  - `judge_significance()` has an early-return guard: when `len(candidates) <= target_count`, returns all with empty tags without calling LLM. Tests that mock `_call_llm` must have more candidates than target.
+  - `_call_llm` can be mocked via `mock.patch('anchor.judge._call_llm')` — the function resolves via module namespace at call time, not at definition time.
+  - Fallback mode tags are always `[]` (empty). Only LLM mode produces semantic tags.
+  - The LLM is only invoked when `api_key` is truthy AND `len(candidates) > target_count`. Otherwise, fallback or early return is used.
+  - Test totals: 326 tests, 0.84s, all passing.
+---
