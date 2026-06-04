@@ -11,6 +11,9 @@ Started: 2026-06-03
 - Hook scripts tested via subprocess with mock stdin
 - Generated test data goes in tests/data/
 - Use `mock.patch.dict(os.environ, {}, clear=True)` to force deterministic fallback mode when testing extract_graph (prevents LLM API key leakage from environment)
+- `SequenceRetriever` concatenates entity + space-joined tags for TF-IDF indexing — semantic tag matching works through this combined text, not entity name alone
+- Verb filtering is 3-layer: Phase 1 (FACT/STOP_ENTITIES/GENERIC), Phase 1 near-noun check (80-char window), Phase 4 judge selection. Noun→verb links set in Phase 3 use unfiltered verb_matches but look up against filtered verb_anchors.
+- Link traversal tests need ≤3 messages using only non-filtered verbs close to proper nouns, ensuring both ends of bidirectional links survive Phase 4 judge selection
 
 ---
 
@@ -73,4 +76,16 @@ Started: 2026-06-03
   - Domain-specific templates should contain: decision verbs, anomalies, data values (versions/line-numbers/error-codes), and tech entities — this ensures the extractor has enough signal to work with.
   - `_extract_graph_fallback` helper (force-clear env) is essential for deterministic compression benchmarks — LLM mode adds non-determinism.
   - Test totals: 349 tests, 0.97s, all passing.
+---
+
+## 2026-06-04 11:10 - US-006
+- What was implemented: 25 reconstruction quality tests across 4 test classes (10 query match + 5 tag-driven + 5 link traversal + 5 negative). Tests cover TF-IDF position retrieval, semantic tag matching, bidirectional link verification, and irrelevant query handling.
+- Files changed: tests/test_core.py (+268 lines: TestReconstructionQueryMatch, TestReconstructionTagMatch, TestReconstructionLinkTraversal, TestReconstructionNegative), prd.json (US-006 passes: true)
+- **Learnings for future iterations:**
+  - `SequenceRetriever._anchor_texts` appends entity + space-joined tags during init. Queries are matched against the combined text, not just the entity. This is how "database" matches "PostgreSQL" — through tags, not entity name.
+  - `_extract_fts_query` regex `[A-Za-z0-9_.+-]+` doesn't match CJK characters. Pure Chinese queries can't use the FTS5 keyword fallback — test Chinese entity matching via Latin-character tags instead.
+  - When `best_score == 0.0` in `find_position`, the fallback substring matching uses `_extract_fts_query` keywords. With empty keyword results, `"" in text` matches the first anchor — avoid relying on this fallback for any meaningful matching.
+  - Verb filtering is a 3-layer cascade: Phase 1 filters FACT/STOP/GENERIC verbs, Phase 1 also drops verbs with no noun within 80 chars, Phase 4 judge removes low-scoring verbs. A noun's `nearest_verb_id` is set in Phase 3 against `verb_matches` (all verbs) but the match is looked up against `verb_anchors` (filtered) — if the nearest verb was filtered, the noun gets no link. Then Phase 4 clears any remaining dangling links.
+  - For graph-based link traversal tests, use ≤3 messages with only non-FACT/non-STOP/non-GENERIC verbs close to proper nouns. This ensures both ends of each link survive Phase 4 judge selection.
+  - Test totals: 374 tests, 1.01s, all passing.
 ---
