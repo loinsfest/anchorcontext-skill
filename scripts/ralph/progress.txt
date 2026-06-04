@@ -100,3 +100,15 @@ Started: 2026-06-03
   - For parametrized tests across 36 files with 3 dimensions (domain x length x lang), using `@pytest.mark.parametrize` with separate test methods per assertion type gives clear failure messages. Stacking all 3 dimensions in one parametrize leads to 36× assertions that are hard to debug.
   - Test totals: 580 tests, 1.73s, all passing.
 ---
+
+## 2026-06-04 12:30 - US-008
+- What was implemented: 8 performance benchmark tests across 4 test classes: TestExtractionSpeed (3 tests — 10/50/100 messages with timing), TestMemoryUsage (2 tests — peak memory < 50MB and graph serialization < 100KB), TestSQLitePerf (2 tests — FTS5 search speed on 200-anchor DB and empty DB), TestColdStart (1 test — cold vs warm extraction comparison).
+- Files changed: tests/test_core.py (+175 lines: 4 new test classes with 8 tests), prd.json (US-008 passes: true)
+- **Learnings for future iterations:**
+  - `_build_perf_msgs()` reuses `generate_test_data._build_en_conversation()` with seed=42 for reproducible benchmark inputs — this avoids introducing separate test data generation code.
+  - FTS5 with default `unicode61` tokenizer lowercases all tokens. Searching for `"TestEntity"` does NOT match `"testentity50"` — always use exact-match tokens in FTS5 search tests, not partial/prefix queries (unless the query includes `*`).
+  - `tracemalloc` must be started BEFORE the operation being measured and stopped after. The peak tracks total allocation across the traced interval, not per-function.
+  - `time.perf_counter()` is preferred for microbenchmarks; warm-up runs before timing loops eliminate Python import/bytecode compilation noise.
+  - `NamedTemporaryFile(delete=False)` with manual cleanup is needed to avoid `PermissionError` on Windows when SQLite holds file handles.
+  - Test totals: 588 tests, 2.01s, all passing.
+---

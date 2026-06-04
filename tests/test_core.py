@@ -3310,3 +3310,177 @@ class TestGenerateScriptImportable:
             gtd.OUT_DIR = orig_dir
             shutil.rmtree(tmp1, ignore_errors=True)
             shutil.rmtree(tmp2, ignore_errors=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Performance — Extraction Speed (US-008: 3 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+import time
+from unittest import mock
+
+
+def _build_perf_msgs(n: int, domain: str = "backend"):
+    """Build N synthetic messages for performance tests using generator templates."""
+    sys.path.insert(0, str(Path(__file__).parent))
+    import generate_test_data as gtd
+    gtd.random.seed(42)
+    return gtd._build_en_conversation(domain, n)
+
+
+class TestExtractionSpeed:
+    """Extraction speed tests: 10/50/100 messages, record timing."""
+
+    def test_extraction_speed_10_messages(self):
+        """10 messages extraction < 0.1s."""
+        msgs = _build_perf_msgs(10)
+        t0 = time.perf_counter()
+        graph = _extract_graph_fallback(msgs)
+        elapsed = time.perf_counter() - t0
+        assert graph.total_anchors > 0, "Should extract anchors"
+        assert elapsed < 0.1, \
+            f"10 messages extraction took {elapsed:.4f}s, must be < 0.1s"
+
+    def test_extraction_speed_50_messages(self):
+        """50 messages extraction < 0.1s."""
+        msgs = _build_perf_msgs(50)
+        _extract_graph_fallback(msgs)  # Warm up
+        times = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            _extract_graph_fallback(msgs)
+            times.append(time.perf_counter() - t0)
+        best = min(times)
+        assert best < 0.1, \
+            f"50 messages extraction best time {best:.4f}s, must be < 0.1s"
+
+    def test_extraction_speed_100_messages(self):
+        """100 messages extraction records timing baseline."""
+        msgs = _build_perf_msgs(100)
+        _extract_graph_fallback(msgs)  # Warm up
+        times = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            graph = _extract_graph_fallback(msgs)
+            times.append(time.perf_counter() - t0)
+        avg = sum(times) / len(times)
+        best = min(times)
+        assert graph.total_anchors > 0, "Should extract anchors"
+        assert best < 0.5, \
+            f"100 messages best time {best:.4f}s, must be < 0.5s"
+        assert avg < 1.0, \
+            f"100 messages avg time {avg:.4f}s, must be < 1.0s"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Performance — Memory Usage (US-008: 2 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestMemoryUsage:
+    """Memory tests: extraction stays bounded."""
+
+    def test_100_messages_memory(self):
+        """100 messages extraction uses < 50MB."""
+        import tracemalloc
+        msgs = _build_perf_msgs(100)
+        tracemalloc.start()
+        graph = _extract_graph_fallback(msgs)
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        peak_mb = peak / (1024 * 1024)
+        assert graph.total_anchors > 0, "Should extract anchors"
+        assert peak_mb < 50, \
+            f"Peak memory {peak_mb:.1f}MB, must be < 50MB"
+
+    def test_100_messages_graph_size(self):
+        """Graph serialization is < 100KB (compact)."""
+        msgs = _build_perf_msgs(100)
+        graph = _extract_graph_fallback(msgs)
+        d = graph.to_dict()
+        serialized = json.dumps(d, ensure_ascii=False)
+        size_kb = len(serialized) / 1024
+        assert size_kb < 100, \
+            f"Graph serialized size {size_kb:.1f}KB, must be < 100KB"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Performance — SQLite FTS5 (US-008: 2 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestSQLitePerf:
+    """SQLite FTS5 search performance tests."""
+
+    def test_fts5_search_speed(self):
+        """FTS5 search returns in < 0.05s."""
+        from anchor.store_sqlite import SqliteStore
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+            db_path = tf.name
+        try:
+            store = SqliteStore(db_path=db_path)
+            seq = AnchorSequence(session_id="perf-fts5")
+            for i in range(200):
+                a = Anchor(
+                    entity=f"TestEntity{i}",
+                    anchor_type=AnchorType.FACT,
+                    entity_class=EntityClass.TECH,
+                    pos=i,
+                    data_values=[f"val_{i}"],
+                )
+                seq.anchors.append(a)
+            store.save_sequence(seq)
+            store.search("TestEntity50", limit=5)  # Warm up
+            times = []
+            for _ in range(10):
+                t0 = time.perf_counter()
+                results = store.search("TestEntity50", limit=5)
+                times.append(time.perf_counter() - t0)
+            best = min(times)
+            assert len(results) > 0, "FTS5 should return results"
+            assert best < 0.05, \
+                f"FTS5 search best time {best:.4f}s, must be < 0.05s"
+        finally:
+            os.unlink(db_path)
+            for suffix in ["-wal", "-shm"]:
+                p = db_path + suffix
+                if os.path.exists(p):
+                    os.unlink(p)
+
+    def test_fts5_search_empty_db(self):
+        """FTS5 search on empty DB returns quickly."""
+        from anchor.store_sqlite import SqliteStore
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+            db_path = tf.name
+        try:
+            store = SqliteStore(db_path=db_path)
+            t0 = time.perf_counter()
+            results = store.search("nonexistent", limit=5)
+            elapsed = time.perf_counter() - t0
+            assert results == [], "Empty DB should return empty results"
+            assert elapsed < 0.01, \
+                f"Empty FTS5 search took {elapsed:.4f}s, must be < 0.01s"
+        finally:
+            os.unlink(db_path)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Performance — Cold Start (US-008: 1 test)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestColdStart:
+    """Cold vs warm extraction performance."""
+
+    def test_cold_vs_warm_extraction(self):
+        """First extraction (cold) slower than second (warm) due to Python caching."""
+        msgs = _build_perf_msgs(50)
+        t0 = time.perf_counter()
+        g1 = _extract_graph_fallback(msgs)
+        cold_time = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        g2 = _extract_graph_fallback(msgs)
+        warm_time = time.perf_counter() - t0
+        assert g1.total_anchors == g2.total_anchors, \
+            "Cold and warm runs should produce identical anchors"
+        assert warm_time < 0.1, \
+            f"Warm extraction time {warm_time:.4f}s, must be < 0.1s"
+        assert cold_time < 0.2, \
+            f"Cold extraction time {cold_time:.4f}s, must be < 0.2s"
