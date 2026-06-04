@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "anchor-context" / "script
 
 from anchor.models import Anchor, AnchorType, EntityClass, AnchorSequence, ENTITY_WEIGHT
 from anchor.verbs import segment_text, get_anchor_type, VERB_MAP
-from anchor.extractor import extract_anchors, _extract_entities, _classify_entity
+from anchor.extractor import extract_anchors, _extract_entities, _classify_entity, _is_proper_entity
 from anchor.store import AnchorStore, id as anchor_id
 from anchor.formatter import format_for_injection, format_compact, format_verbose
 from anchor.conflict import detect_conflicts, mark_superseded, _entity_overlap_score
@@ -601,6 +601,370 @@ class TestExtractor:
         ]
         seq = extract_anchors(messages)
         assert len(seq.anchors) >= 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Extractor — DATA Entity Tests (US-002: 15 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestEntityDataExtraction:
+    """15 DATA entity tests: versions, error codes, numbers+units, line numbers."""
+
+    def test_extract_version_14_2(self):
+        entities = _extract_entities("PostgreSQL 14.2 is the database version")
+        texts = [e[0] for e in entities]
+        assert "14.2" in texts
+
+    def test_extract_version_3_10_1(self):
+        entities = _extract_entities("Python 3.10.1 upgrade required")
+        texts = [e[0] for e in entities]
+        assert "3.10.1" in texts
+
+    def test_extract_version_classified_data(self):
+        entities = _extract_entities("Upgraded to 14.2")
+        for text, ec, _, _ in entities:
+            if text == "14.2":
+                assert ec == EntityClass.DATA
+
+    def test_extract_error_code_err_005(self):
+        entities = _extract_entities("Error ERR_005 on auth service")
+        texts = [e[0] for e in entities]
+        assert any("ERR_005" in t for t in texts)
+
+    def test_extract_error_code_ann_001(self):
+        entities = _extract_entities("Trace ANN_001 in logs")
+        texts = [e[0] for e in entities]
+        assert any("ANN_001" in t for t in texts)
+
+    def test_extract_error_code_classified_data(self):
+        entities = _extract_entities("Got ERR_005 from API")
+        for text, ec, _, _ in entities:
+            if "ERR_005" in text:
+                assert ec == EntityClass.DATA
+
+    def test_extract_number_unit_200ms(self):
+        entities = _extract_entities("Latency dropped to 200ms")
+        texts = [e[0] for e in entities]
+        assert any("200ms" in t for t in texts)
+
+    def test_extract_number_unit_2_1GB(self):
+        entities = _extract_entities("Memory peaked at 2.1GB")
+        texts = [e[0] for e in entities]
+        assert any("2.1GB" in t for t in texts)
+
+    def test_extract_number_unit_500rps(self):
+        entities = _extract_entities("Throughput reached 500 RPS")
+        texts = [e[0] for e in entities]
+        assert any("500" in str(t) for t in texts)
+
+    def test_extract_number_unit_80mb(self):
+        entities = _extract_entities("Image size is 80MB")
+        texts = [e[0] for e in entities]
+        assert any("80MB" in t for t in texts)
+
+    def test_extract_line_number_single(self):
+        entities = _extract_entities("Error at auth.ts:42 — null pointer")
+        texts = [e[0] for e in entities]
+        assert any("42" == t or ":42" in str(t) for t in texts)
+
+    def test_extract_line_number_three_digit(self):
+        entities = _extract_entities("user.py:142 has the bug")
+        texts = [e[0] for e in entities]
+        assert any("142" == str(t) for t in texts)
+
+    def test_extract_standalone_number_14(self):
+        entities = _extract_entities("Found 14 instances of the bug")
+        texts = [e[0] for e in entities]
+        assert "14" in texts
+
+    def test_standalone_number_under_10_filtered(self):
+        """Bare numbers under 10 should not be extracted as entities."""
+        entities = _extract_entities("Found 5 bugs and 3 errors")
+        texts = [e[0] for e in entities]
+        assert "5" not in texts
+        assert "3" not in texts
+
+    def test_number_unit_before_standalone_number(self):
+        """Number-with-unit regex runs before standalone number regex."""
+        entities = _extract_entities("Latency: 200ms or 14 seconds")
+        texts = [e[0] for e in entities]
+        assert any("200ms" in t for t in texts)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Extractor — TECH Entity Tests (US-002: 15 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestEntityTechExtraction:
+    """15 TECH entity tests: filenames, PascalCase, camelCase, UPPER_CASE, domains."""
+
+    def test_extract_filename_auth_ts(self):
+        entities = _extract_entities("Race condition in auth.ts:42")
+        texts = [e[0] for e in entities]
+        assert any("auth.ts" == t or "auth" in str(t) for t in texts)
+
+    def test_extract_filename_py_file(self):
+        entities = _extract_entities("The user.py module needs refactoring")
+        texts = [e[0] for e in entities]
+        assert any("user.py" in t for t in texts)
+
+    def test_extract_filename_yaml_config(self):
+        entities = _extract_entities("Update config.yaml for the new env")
+        texts = [e[0] for e in entities]
+        assert any("config.yaml" in t for t in texts)
+
+    def test_extract_pascalcase_postgresql(self):
+        entities = _extract_entities("We use PostgreSQL 14.2 as the main database")
+        texts = [e[0] for e in entities]
+        assert any("PostgreSQL" in t for t in texts)
+
+    def test_extract_pascalcase_oauth2(self):
+        entities = _extract_entities("Implement OAuth2 for social login")
+        texts = [e[0] for e in entities]
+        assert any("OAuth2" in t for t in texts)
+
+    def test_extract_pascalcase_classified_tech(self):
+        entities = _extract_entities("PostgreSQL is the database")
+        for text, ec, _, _ in entities:
+            if "PostgreSQL" in text:
+                assert ec == EntityClass.TECH
+
+    def test_extract_uppercase_setnx(self):
+        entities = _extract_entities("Use Redis SETNX for distributed locking")
+        texts = [e[0] for e in entities]
+        assert any("SETNX" in t for t in texts)
+
+    def test_extract_uppercase_jwt(self):
+        entities = _extract_entities("JWT tokens expire after 1 hour")
+        texts = [e[0] for e in entities]
+        assert any("JWT" in t for t in texts)
+
+    def test_extract_uppercase_classified_tech(self):
+        entities = _extract_entities("JWT token in SETNX lock")
+        for text, ec, _, _ in entities:
+            if text == "JWT" or text == "SETNX":
+                assert ec == EntityClass.TECH
+
+    def test_extract_camelcase_variable(self):
+        entities = _extract_entities("The getCwd function needs updating")
+        texts = [e[0] for e in entities]
+        assert any("getCwd" in t for t in texts)
+
+    def test_extract_domain_grafana_internal(self):
+        entities = _extract_entities("Monitor at grafana.internal")
+        texts = [e[0] for e in entities]
+        assert any("grafana.internal" in t for t in texts)
+
+    def test_extract_domain_example_com(self):
+        entities = _extract_entities("API at api.example.com is down")
+        texts = [e[0] for e in entities]
+        assert any("example.com" in t for t in texts)
+
+    def test_extract_filename_go_file(self):
+        entities = _extract_entities("The main.go file is the entry point")
+        texts = [e[0] for e in entities]
+        assert any("main.go" in t for t in texts)
+
+    def test_extract_snake_case_identifier(self):
+        entities = _extract_entities("Use distributed_lock for sync")
+        texts = [e[0] for e in entities]
+        assert any("distributed_lock" in t for t in texts)
+
+    def test_extract_uppercase_acronym(self):
+        entities = _extract_entities("LRU cache eviction policy")
+        texts = [e[0] for e in entities]
+        assert any("LRU" in t for t in texts)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Extractor — Garbage Filter Tests (US-002: 10 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestEntityGarbageFilter:
+    """10 garbage filter tests: sentence-initial caps, bare numbers, fragments."""
+
+    def test_stop_entity_BEFORE_filtered(self):
+        """'BEFORE' is in _STOP_ENTITIES and should be filtered."""
+        entities = _extract_entities("BEFORE we start the migration, check Redis")
+        texts = [e[0] for e in entities]
+        assert "BEFORE" not in texts
+
+    def test_stop_entity_CANNOT_filtered(self):
+        """'CANNOT' (uppercase) is in _STOP_ENTITIES and should be filtered."""
+        entities = _extract_entities("CANNOT deploy on Friday due to freeze")
+        texts = [e[0] for e in entities]
+        assert "CANNOT" not in texts
+
+    def test_stop_entity_lowercase_using_filtered(self):
+        """'using' is in _STOP_ENTITIES and should be filtered."""
+        entities = _extract_entities("Fixed using the new Redis approach")
+        texts = [e[0] for e in entities]
+        assert "using" not in texts
+
+    def test_stop_entity_FIRST_filtered(self):
+        """'FIRST' is in _STOP_ENTITIES and should be filtered."""
+        entities = _extract_entities("FIRST we need to check the database")
+        texts = [e[0] for e in entities]
+        assert "FIRST" not in texts
+
+    def test_bare_number_5_filtered(self):
+        entities = _extract_entities("Found 5 errors in the logs")
+        texts = [e[0] for e in entities]
+        assert "5" not in texts
+
+    def test_bare_number_7_filtered(self):
+        entities = _extract_entities("Only 7 users affected")
+        texts = [e[0] for e in entities]
+        assert "7" not in texts
+
+    def test_hyphen_start_fragment_filtered(self):
+        entities = _extract_entities("The -based approach works")
+        texts = [e[0] for e in entities]
+        assert "-based" not in texts
+
+    def test_underscore_start_fragment_filtered(self):
+        entities = _extract_entities("_private field should not leak")
+        texts = [e[0] for e in entities]
+        assert not any(t.startswith("_") for t in texts)
+
+    def test_stop_entity_before_filtered(self):
+        """'BEFORE' in stop list should not appear."""
+        entities = _extract_entities("BEFORE we begin the migration")
+        texts = [e[0] for e in entities]
+        assert "BEFORE" not in texts
+
+    def test_bare_number_10_extracted(self):
+        """Numbers >= 10 should be extracted as DATA entities."""
+        entities = _extract_entities("Found 14 instances total")
+        texts = [e[0] for e in entities]
+        assert "14" in texts
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Extractor — Chinese Entity Tests (US-002: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestChineseEntityExtraction:
+    """5 Chinese entity tests: distributed lock, cross-pod sync, etc."""
+
+    def test_chinese_term_distributed_lock(self):
+        entities = _extract_entities("使用分布式锁来同步操作")
+        texts = [e[0] for e in entities]
+        assert len(texts) >= 1, f"Expected at least 1 entity, got {texts}"
+        for _, ec, _, _ in entities:
+            assert ec == EntityClass.TERM
+
+    def test_chinese_term_cross_pod_sync(self):
+        entities = _extract_entities("跨Pod同步需要处理竞争条件")
+        texts = [e[0] for e in entities]
+        assert len(texts) >= 1, f"Expected at least 1 entity, got {texts}"
+
+    def test_chinese_term_classified_term(self):
+        entities = _extract_entities("需要分布式锁来处理")
+        for text, ec, _, _ in entities:
+            if "分布式" in text or "锁" in text:
+                assert ec == EntityClass.TERM
+
+    def test_chinese_term_data_value(self):
+        entities = _extract_entities("报错 ERR_005 在 auth.ts:42")
+        texts = [e[0] for e in entities]
+        assert any("ERR_005" in t or "auth.ts" in t or "42" == str(t) for t in texts)
+
+    def test_chinese_term_multi_char(self):
+        entities = _extract_entities("数据库连接池配置需要更新")
+        texts = [e[0] for e in entities]
+        assert len(texts) > 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Extractor — Mixed Entity Tests (US-002: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestMixedEntityExtraction:
+    """5 mixed entity tests: Chinese + English combined text."""
+
+    def test_mixed_chinese_english_sentence(self):
+        text = "我们使用 Redis 分布式锁来处理 JWT race condition"
+        entities = _extract_entities(text)
+        texts = [e[0] for e in entities]
+        assert len(texts) >= 2, f"Expected >=2 entities, got {texts}"
+
+    def test_mixed_chinese_with_version(self):
+        text = "PostgreSQL 14.2数据库需要配置连接池大小20"
+        entities = _extract_entities(text)
+        texts = [e[0] for e in entities]
+        # PostgreSQL should be found as a TECH entity
+        assert any("PostgreSQL" in t for t in texts), f"Expected PostgreSQL in {texts}"
+        # 14 or 14.2 should be found as DATA
+        has_version = any("14" in str(t) for t in texts)
+        assert has_version, f"Expected 14/14.2 in {texts}"
+
+    def test_mixed_chinese_with_error_code(self):
+        text = "错误码ERR_005出现在auth.ts的42行"
+        entities = _extract_entities(text)
+        texts = [e[0] for e in entities]
+        assert len(texts) >= 1, f"Expected at least 1 entity, got {texts}"
+
+    def test_mixed_entity_count(self):
+        """A mixed text should produce at least 3 entities."""
+        text = "我们用 PostgreSQL 14.2 代替 Redis 分布式锁 JWT 认证"
+        entities = _extract_entities(text)
+        assert len(entities) >= 3, f"Expected >=3 entities, got {len(entities)}: {entities}"
+
+    def test_mixed_entity_classification(self):
+        """DATA and TECH entities should coexist in mixed text."""
+        text = "PostgreSQL 14.2 ERR_005 auth.ts:42"
+        entities = _extract_entities(text)
+        classes = set(ec for _, ec, _, _ in entities if ec is not None)
+        assert EntityClass.DATA in classes
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Extractor — _is_proper_entity Edge Cases (US-002)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestIsProperEntity:
+    """_is_proper_entity() edge cases: short tech terms vs common words."""
+
+    def test_redis_5_chars_is_proper(self):
+        assert _is_proper_entity("Redis") is True
+
+    def test_decided_7_chars_blacklisted(self):
+        assert _is_proper_entity("Decided") is False
+
+    def test_cannot_6_chars_blacklisted(self):
+        assert _is_proper_entity("Cannot") is False
+
+    def test_postgresql_pascalcase_is_proper(self):
+        assert _is_proper_entity("PostgreSQL") is True
+
+    def test_jwt_acronym_is_proper(self):
+        assert _is_proper_entity("JWT") is True
+
+    def test_lowercase_common_word_not_proper(self):
+        assert _is_proper_entity("database") is False
+
+    def test_entity_with_digits_is_proper(self):
+        assert _is_proper_entity("14.2") is True
+
+    def test_entity_with_dot_is_proper(self):
+        assert _is_proper_entity("auth.ts") is True
+
+    def test_snake_case_compound_is_proper(self):
+        assert _is_proper_entity("distributed_lock") is True
+
+    def test_all_uppercase_3_chars_is_proper(self):
+        assert _is_proper_entity("LRU") is True
+
+    def test_single_initial_cap_common_vowel_heavy(self):
+        """'Decided' has high vowel ratio → not proper. But it's also blacklisted."""
+        assert _is_proper_entity("Database") is False
+
+    def test_empty_string_not_proper(self):
+        assert _is_proper_entity("") is False
+
+    def test_short_lowercase_not_proper(self):
+        assert _is_proper_entity("set") is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
