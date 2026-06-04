@@ -1,0 +1,52 @@
+# Ralph Progress Log — Anchor Context Testing
+Started: 2026-06-03
+
+## Codebase Patterns
+- Test directory: tests/
+- Source directory: anchor-context/scripts/anchor/
+- Python 3.9+, pytest 9.x
+- Run tests: `python -m pytest tests/ -v`
+- No external dependencies needed for testing (fallback mode)
+- LLM judge tests require DEEPSEEK_API_KEY env var
+- Hook scripts tested via subprocess with mock stdin
+- Generated test data goes in tests/data/
+- Use `mock.patch.dict(os.environ, {}, clear=True)` to force deterministic fallback mode when testing extract_graph (prevents LLM API key leakage from environment)
+
+---
+
+## 2026-06-04 09:12 - US-001
+- What was implemented: Expanded verb lexicon tests from 7 to 147 test items (55+ unique test cases). 10 test classes covering all acceptance criteria.
+- Files changed: tests/test_core.py (+358/-31 lines), anchor-context/scripts/anchor/verbs.py (+1 line for "crashed")
+- **Learnings for future iterations:**
+  - The `_VERB_RE` regex is case-insensitive at match time but `VERB_MAP` lookups use `.lower()`. This means verbs.txt extends the list but tests must use lowercase form for `get_anchor_type()` direct lookups.
+  - Parametrized tests (`@pytest.mark.parametrize`) are the right pattern for bulk verb-category verification — 1 test functions generates N test items.
+  - The `segment_text()` function returns match positions that can be used to verify longer compound phrases consumed characters before shorter sub-phrases.
+  - Performance testing: ~100 repetitions averaged avoids cold-start noise. The regex-based single-pass scanner handles 1000+ chars in well under 0.01s.
+  - `time.perf_counter()` is preferred over `time.time()` for microbenchmarks (monotonic, higher resolution).
+---
+
+## 2026-06-04 09:28 - US-002
+- What was implemented: Expanded entity extraction tests from 7 to 70 test items (63 new tests). 6 new test classes covering all acceptance criteria.
+- Files changed: tests/test_core.py (+287 lines), prd.json (US-002 passes: true)
+- **Learnings for future iterations:**
+  - `_is_garbage()` (checks `_STOP_ENTITIES`) runs during `_extract_entities()`. `_is_proper_entity()` (checks `_common_word_blacklist`) runs later in `extract_graph()`. Tests at the `_extract_entities` level verify `_STOP_ENTITIES`-level filtering only.
+  - `_RE_CMD_FLAG` matches `--flag` but `_is_garbage` filters anything starting with `-`. Cmd flags are effectively never extracted.
+  - Chinese+English mixed text needs spaces between segments. Without spaces, `\b` boundaries fail at Chinese/ASCII transitions (both are `\w` in Unicode mode).
+  - The Chinese regex `[一-鿿]{2,8}` is greedy (8-char max chunks). Test entity presence rather than specific substrings.
+  - `_STOP_ENTITIES` has mixed case. `_is_garbage` checks `entity.lower()` → only entries with a lowercase variant get filtered by the `.lower()` path.
+  - Test totals: 254 tests, 0.42s, all passing.
+---
+
+## 2026-06-04 09:45 - US-003
+- What was implemented: Expanded bidirectional graph tests with 43 new tests across 6 test classes. Total test count now 297 (all passing).
+- Files changed: tests/test_core.py (+312 lines: TestGraphVerbAnchors 10 tests, TestGraphNounAnchors 10 tests, TestGraphLinkIntegrity 8 tests, TestGraphDedup 5 tests, TestGraphTopN 5 tests, TestGraphEmptyInput 5 tests), prd.json (US-003 passes: true)
+- **Learnings for future iterations:**
+  - The `_extract_graph_fallback` helper uses `mock.patch.dict(os.environ, {}, clear=True)` to force deterministic fallback mode regardless of DEEPSEEK_API_KEY presence. This prevents LLM-dependent flakiness in CI.
+  - `_GENERIC_VERBS` (set in extract_graph) filters common verbs like "use", "make", "need" — these will never appear as verb anchors even if VERB_MAP classifies them.
+  - `_STOP_ENTITIES` includes "found" in lowercase → verbs extracted by segment_text may still be filtered in Phase 1 of extract_graph. Tests must use unfiltered DISCOVERY verbs like "identified", "discovered".
+  - **Regex compound entity pitfall**: `_RE_PROPER_NAME` matches multi-word sequences like "Redis SETNX" and "Found JWT" as single entities. `_resolve_tags()` only does exact dict lookups, so compound entities won't get tags. Tests must use standalone entities for tag verification.
+  - Verb anchors require at least one noun within 80-char window (`WINDOW_SIZE`) — messages with no extractable entities produce zero verb anchors.
+  - Noun anchors require at least one non-generic verb within 80-char window — messages with only `_GENERIC_VERBS` produce zero noun anchors.
+  - Fallback judge selection is deterministic: top 2 verbs + top 3 tech nouns + top 3 data nouns guaranteed (8 minimum), rest filled by score.
+  - Test totals: 297 tests, 0.60s, all passing.
+---

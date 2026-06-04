@@ -1,0 +1,168 @@
+{
+  "project": "AnchorContext-Skill Testing",
+  "branchName": "ralph/testing-500",
+  "description": "Production stability testing for anchor context compression skill. 200+ tests covering verbs, extraction, graph, LLM judge, benchmarks, hooks. 5 Ralph iterations to verify zero flaky tests.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Expand verb lexicon tests (verbs.py)",
+      "description": "As a developer, I need 55+ verb tests covering all types across English/Chinese with past tense and edge cases.",
+      "acceptanceCriteria": [
+        "30 English verb tests: DECISION/DISCOVERY/ANOMALY/CONSTRAINT with past tense (decided, found, crashed)",
+        "10 Chinese verb tests: 决定/发现/报错/必须 with synonym variants",
+        "5 compound verb tests: 'tracked down', 'opted for', 'narrowed down'",
+        "5 case-insensitive tests: 'Decided', 'FOUND', 'Crashed'",
+        "5 unknown verb tests: return FACT for unlisted verbs",
+        "segment_text() performance: 1000 char text < 0.01s",
+        "Tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Expand entity extraction tests (extractor.py)",
+      "description": "As a developer, I need 50+ entity tests verifying DATA/TECH/TERM classification, garbage filtering, and edge cases.",
+      "acceptanceCriteria": [
+        "15 DATA entity tests: versions(14.2), error codes(ERR_005), numbers+units(200ms, 2.1GB), line numbers(:42)",
+        "15 TECH entity tests: filenames(auth.ts), PascalCase(PostgreSQL, OAuth2), camelCase, UPPER_CASE, domains",
+        "10 garbage filter tests: sentence-initial caps(Decided), bare numbers(<10), fragments",
+        "5 Chinese entity tests: 分布式锁, 跨Pod同步",
+        "5 mixed entity tests: Chinese+English combined text",
+        "_is_proper_entity() edge cases: Redis(5chars), Decided(7chars), Cannot(6chars)",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Expand bidirectional graph tests (extract_graph)",
+      "description": "As a developer, I need 43+ graph tests verifying VerbAnchor+NounAnchor creation, links, dedup, and Top-N.",
+      "acceptanceCriteria": [
+        "10 verb anchor tests: each verb correctly links to nearest noun",
+        "10 noun anchor tests: each noun correctly links to nearest verb, tags populated",
+        "8 link integrity tests: no dangling references, bidirectional consistency",
+        "5 dedup tests: duplicate entities/verbs filtered out",
+        "5 Top-N tests: 30 messages produces 12-20 anchors (<= max(8,30//2))",
+        "5 empty/tiny input tests: 0 messages, 1 message, blank content",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "LLM judge dual-mode tests (judge.py)",
+      "description": "As a developer, I need 29+ judge tests covering LLM mode (tag generation), fallback mode (no API key), and error handling.",
+      "acceptanceCriteria": [
+        "8 LLM mode tests: 10 candidates -> select 6 most significant, tags non-empty",
+        "8 Fallback mode tests: no API key -> balanced verb+noun selection with quota",
+        "5 tag quality tests: LLM tags cover database/cache/auth/performance/monitoring domains",
+        "5 edge case tests: empty candidates, all-noise, verbs-only, nouns-only",
+        "3 API error tests: network timeout, empty JSON response, malformed JSON",
+        "Tests pass"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Compression ratio benchmarks",
+      "description": "As a developer, I need 23+ benchmark tests verifying compression stays above 85% across domains and lengths.",
+      "acceptanceCriteria": [
+        "5 backend domain tests: 30 backend messages -> >= 85% compression",
+        "5 frontend domain tests: 40 frontend messages -> >= 85% compression",
+        "5 mixed domain tests: 50 mixed messages -> >= 80% compression",
+        "5 short conversation tests: 5-10 messages -> reasonable anchor count",
+        "3 extreme tests: 100 messages -> >= 90% compression",
+        "Tests pass"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Reconstruction quality tests",
+      "description": "As a developer, I need 25+ reconstruction tests verifying anchor windows contain ground-truth information.",
+      "acceptanceCriteria": [
+        "10 query match tests: known queries hit correct anchors, windows contain expected keywords",
+        "5 tag-driven match tests: semantic tags enable 'database'->'PostgreSQL' matching",
+        "5 link traversal tests: follow verb->noun or noun->verb links, window covers both positions",
+        "5 negative tests: irrelevant queries should not match with high confidence",
+        "Tests pass"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Auto-generate test conversation data",
+      "description": "As a developer, I need a script that generates random conversations across 6 domains x 3 lengths x 2 languages = 36 files.",
+      "acceptanceCriteria": [
+        "Create tests/generate_test_data.py script",
+        "6 domains: backend, frontend, devops, data-science, mobile, game-dev",
+        "3 lengths: short(10msgs), medium(30msgs), long(60msgs)",
+        "2 languages: English, Chinese",
+        "Each conversation contains: decision verbs, anomalies, data values(versions/line-numbers/error-codes)",
+        "Generate 36 conversation files saved to tests/data/",
+        "Tests pass"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Performance benchmark tests",
+      "description": "As a developer, I need 8+ performance tests verifying extraction speed < 0.1s for 50 messages and bounded memory.",
+      "acceptanceCriteria": [
+        "3 extraction speed tests: 10/50/100 messages, record timing",
+        "2 memory tests: 100 messages uses < 50MB",
+        "2 SQLite perf tests: FTS5 search < 0.05s",
+        "1 cold start test: first extraction (cold) vs second (warm)",
+        "Tests pass"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Hook script integration tests",
+      "description": "As a developer, I need 16+ hook tests verifying pre_compact, inject, stop_backup scripts work with stdin/stdout.",
+      "acceptanceCriteria": [
+        "5 pre_compact tests: different stdin JSON formats -> anchors saved to disk",
+        "5 inject tests: saved anchors -> valid hookSpecificOutput JSON with additionalContext",
+        "3 stop_backup tests: session exit saves anchors, including edge cases",
+        "3 error handling tests: corrupted JSON, empty input, oversized input",
+        "Tests pass"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Ralph autonomous loop — 5 iterations",
+      "description": "As a developer, I need Ralph to run the full test suite 5 times autonomously, catching flaky tests and regressions.",
+      "acceptanceCriteria": [
+        "prd.json contains all 10 user stories with correct priorities",
+        "Ralph runs 5 iterations: each spawns fresh Claude Code instance",
+        "Each iteration: run all 200+ tests -> record pass/fail -> fix failures -> commit",
+        "After 5 iterations: all tests pass stably, zero flaky",
+        "progress.txt records per-round pass rate and learnings",
+        "Tests pass"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
