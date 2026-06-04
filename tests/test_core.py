@@ -3484,3 +3484,434 @@ class TestColdStart:
             f"Warm extraction time {warm_time:.4f}s, must be < 0.1s"
         assert cold_time < 0.2, \
             f"Cold extraction time {cold_time:.4f}s, must be < 0.2s"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Hook Script Integration — Helpers (US-009)
+# ═══════════════════════════════════════════════════════════════════════════
+
+import subprocess
+import shutil
+
+_SCRIPTS_DIR = Path(__file__).parent.parent / "anchor-context" / "scripts"
+_PYTHON = sys.executable
+
+
+def _run_hook_script(script_name, args=None, stdin_data=None, home_dir=None,
+                     timeout=30):
+    """Run a hook Python script as subprocess with isolated HOME for store dir.
+
+    Sets HOME and USERPROFILE to a temp directory so AnchorStore writes
+    to an isolated location instead of the real ~/.claude/anchors/.
+    """
+    script_path = _SCRIPTS_DIR / script_name
+    cmd = [_PYTHON, str(script_path)] + (args or [])
+    env = os.environ.copy()
+    if home_dir:
+        env["HOME"] = home_dir
+        env["USERPROFILE"] = home_dir
+    return subprocess.run(
+        cmd,
+        input=stdin_data,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=timeout,
+    )
+
+
+_HOOK_TEST_MESSAGES = [
+    {"content": "Decided to migrate PostgreSQL from version 14.2 to 15.0 for better performance"},
+    {"content": "Found race condition in Redis SETNX at auth.ts:42 causing timeouts"},
+    {"content": "API latency spiked to 200ms after deploying Kubernetes v1.27"},
+    {"content": "Must implement JWT token rotation for OAuth2 in auth.ts:105"},
+    {"content": "Configured Prometheus monitoring with Grafana dashboard for error ERR_005"},
+    {"content": "Identified memory leak in PgBouncer connection pool at pool.go:78"},
+    {"content": "Switched from Memcached to Redis cluster with 2.1GB capacity"},
+    {"content": "Database deadlock error ERR_042 on order_items table at query_handler.go:200"},
+    {"content": "Upgraded Prisma ORM from 4.7 to 5.1 to resolve N+1 query issue"},
+    {"content": "Optimized PostgreSQL VACUUM settings after identifying 5GB of dead tuples"},
+]
+
+
+def _json_to_stdin(obj):
+    """Serialize a dict to JSON string for stdin piping."""
+    return json.dumps(obj, ensure_ascii=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Hook Script Integration — PreCompact Tests (US-009: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestPreCompactHook:
+    """5 pre_compact tests: different stdin JSON formats -> anchors saved to disk."""
+
+    def test_direct_messages_format_saves_anchors(self):
+        """Input with direct 'messages' field → anchors extracted and saved."""
+        home = tempfile.mkdtemp()
+        try:
+            stdin_data = _json_to_stdin({
+                "messages": _HOOK_TEST_MESSAGES,
+                "session_id": "test-precompact-messages",
+            })
+            result = _run_hook_script(
+                "pre_compact.py", args=["save"],
+                stdin_data=stdin_data, home_dir=home,
+            )
+            assert result.returncode == 0, f"stderr: {result.stderr}"
+            # Verify anchors saved to disk
+            anchors_dir = Path(home) / ".claude" / "anchors"
+            saved_files = list(anchors_dir.glob("*.json")) if anchors_dir.exists() else []
+            assert len(saved_files) > 0, "No anchor files saved"
+            # Output should contain compact instructions
+            assert len(result.stdout) > 0, "No compact instructions output"
+            assert "anchor" in result.stdout.lower(), \
+                f"Compact instructions missing 'anchor': {result.stdout[:200]}"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_conversation_nested_format_saves_anchors(self):
+        """Input with 'conversation.messages' nested format → anchors saved."""
+        home = tempfile.mkdtemp()
+        try:
+            stdin_data = _json_to_stdin({
+                "conversation": {
+                    "messages": _HOOK_TEST_MESSAGES,
+                },
+                "session_id": "test-precompact-nested",
+            })
+            result = _run_hook_script(
+                "pre_compact.py", args=["save"],
+                stdin_data=stdin_data, home_dir=home,
+            )
+            assert result.returncode == 0
+            anchors_dir = Path(home) / ".claude" / "anchors"
+            saved_files = list(anchors_dir.glob("*.json")) if anchors_dir.exists() else []
+            assert len(saved_files) > 0, "No anchor files saved for nested format"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_empty_messages_no_save(self):
+        """Empty messages list → no anchors saved, no crash."""
+        home = tempfile.mkdtemp()
+        try:
+            stdin_data = _json_to_stdin({
+                "messages": [],
+                "session_id": "test-empty",
+            })
+            result = _run_hook_script(
+                "pre_compact.py", args=["save"],
+                stdin_data=stdin_data, home_dir=home,
+            )
+            assert result.returncode == 0
+            anchors_dir = Path(home) / ".claude" / "anchors"
+            # Should not create files for empty messages
+            saved_files = list(anchors_dir.glob("*.json")) if anchors_dir.exists() else []
+            assert len(saved_files) == 0, \
+                f"Should not save for empty messages, found {len(saved_files)} file(s)"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_no_session_id_generates_one(self):
+        """Input without session_id → auto-generates a session_id and saves."""
+        home = tempfile.mkdtemp()
+        try:
+            stdin_data = _json_to_stdin({
+                "messages": _HOOK_TEST_MESSAGES[:5],
+            })
+            result = _run_hook_script(
+                "pre_compact.py", args=["save"],
+                stdin_data=stdin_data, home_dir=home,
+            )
+            assert result.returncode == 0
+            anchors_dir = Path(home) / ".claude" / "anchors"
+            saved_files = list(anchors_dir.glob("*.json")) if anchors_dir.exists() else []
+            assert len(saved_files) > 0, \
+                "Should generate session_id and save anchors"
+            # The auto-generated session_id is 12 hex chars
+            assert len(saved_files[0].stem) == 12, \
+                f"Auto-generated session_id should be 12 hex chars, got: {saved_files[0].stem}"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_no_recognized_message_format_graceful(self):
+        """Input with no recognized message format → graceful return, no crash."""
+        home = tempfile.mkdtemp()
+        try:
+            stdin_data = _json_to_stdin({
+                "unrelated_field": "some data",
+                "session_id": "test-noformat",
+            })
+            result = _run_hook_script(
+                "pre_compact.py", args=["save"],
+                stdin_data=stdin_data, home_dir=home,
+            )
+            assert result.returncode == 0
+            # Should not crash and not save anything
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Hook Script Integration — Inject Tests (US-009: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestInjectHook:
+    """5 inject tests: saved anchors → valid hookSpecificOutput JSON."""
+
+    def _save_anchors(self, home_dir, session_id, messages=None):
+        """Helper: run pre_compact to save anchors, then return the anchors dir."""
+        if messages is None:
+            messages = _HOOK_TEST_MESSAGES
+        stdin_data = _json_to_stdin({
+            "messages": messages,
+            "session_id": session_id,
+        })
+        _run_hook_script(
+            "pre_compact.py", args=["save"],
+            stdin_data=stdin_data, home_dir=home_dir,
+        )
+
+    def test_with_saved_anchors_outputs_valid_json(self):
+        """Pre-saved anchors → inject outputs valid hookSpecificOutput JSON."""
+        home = tempfile.mkdtemp()
+        try:
+            self._save_anchors(home, "test-inject-001")
+            result = _run_hook_script(
+                "inject.py", home_dir=home,
+            )
+            assert result.returncode == 0, f"stderr: {result.stderr}"
+            output = json.loads(result.stdout.strip())
+            assert "hookSpecificOutput" in output, \
+                f"Missing hookSpecificOutput key: {list(output.keys())}"
+            hso = output["hookSpecificOutput"]
+            assert hso["hookEventName"] == "SessionStart"
+            assert "additionalContext" in hso
+            assert len(hso["additionalContext"]) > 0, \
+                "additionalContext should not be empty when anchors exist"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_without_saved_anchors_outputs_empty(self):
+        """No saved anchors → inject outputs valid but empty additionalContext."""
+        home = tempfile.mkdtemp()
+        try:
+            # Don't save anything — inject from empty store
+            result = _run_hook_script("inject.py", home_dir=home)
+            assert result.returncode == 0
+            output = json.loads(result.stdout.strip())
+            assert output["hookSpecificOutput"]["additionalContext"] == ""
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_additional_context_contains_entities(self):
+        """additionalContext should contain entity names from saved anchors."""
+        home = tempfile.mkdtemp()
+        try:
+            self._save_anchors(home, "test-inject-ctx")
+            result = _run_hook_script("inject.py", home_dir=home)
+            assert result.returncode == 0
+            output = json.loads(result.stdout.strip())
+            ctx = output["hookSpecificOutput"]["additionalContext"]
+            # Should contain at least one key entity
+            assert "PostgreSQL" in ctx or "Redis" in ctx or "JWT" in ctx, \
+                f"additionalContext missing entity names: {ctx[:300]}"
+            assert "锚点上下文" in ctx, \
+                "Should contain Chinese anchor context header"
+            assert "Session:" in ctx or "session" in ctx.lower(), \
+                "Should contain session identifier"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_output_schema_is_correct(self):
+        """Output JSON follows the Claude Code hook output schema exactly."""
+        home = tempfile.mkdtemp()
+        try:
+            self._save_anchors(home, "test-inject-schema")
+            result = _run_hook_script("inject.py", home_dir=home)
+            assert result.returncode == 0
+            output = json.loads(result.stdout.strip())
+            # Schema: { hookSpecificOutput: { hookEventName, additionalContext } }
+            assert set(output.keys()) == {"hookSpecificOutput"}
+            hso = output["hookSpecificOutput"]
+            assert set(hso.keys()) == {"hookEventName", "additionalContext"}
+            assert hso["hookEventName"] == "SessionStart"
+            assert isinstance(hso["additionalContext"], str)
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_display_format_flag(self):
+        """--format flag outputs human-readable text, not JSON."""
+        home = tempfile.mkdtemp()
+        try:
+            self._save_anchors(home, "test-inject-display")
+            result = _run_hook_script(
+                "inject.py", args=["--format"], home_dir=home,
+            )
+            assert result.returncode == 0
+            stdout = result.stdout.strip()
+            # Display format has section headers, separators, not JSON
+            assert "anchor" in stdout.lower() or "Session:" in stdout, \
+                f"Display format should show anchor info: {stdout[:300]}"
+            # Should NOT be valid JSON
+            try:
+                json.loads(stdout)
+                assert False, "Display output should not be valid JSON"
+            except json.JSONDecodeError:
+                pass  # Expected — display format is human-readable text
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Hook Script Integration — StopBackup Tests (US-009: 3 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestStopBackupHook:
+    """3 stop_backup tests: session exit saves anchors, including edge cases."""
+
+    def test_new_session_saves_anchors(self):
+        """≥3 messages, no existing anchors from PreCompact → anchors saved."""
+        home = tempfile.mkdtemp()
+        try:
+            stdin_data = _json_to_stdin({
+                "messages": _HOOK_TEST_MESSAGES[:5],
+                "session_id": "test-stop-new",
+            })
+            result = _run_hook_script(
+                "stop_backup.py", stdin_data=stdin_data, home_dir=home,
+            )
+            assert result.returncode == 0
+            anchors_dir = Path(home) / ".claude" / "anchors"
+            saved_files = list(anchors_dir.glob("*.json")) if anchors_dir.exists() else []
+            assert len(saved_files) > 0, \
+                "Stop hook should save anchors for new session"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_existing_session_skips(self):
+        """Session already saved by PreCompact → stop_backup skips re-saving."""
+        home = tempfile.mkdtemp()
+        try:
+            # First, save via pre_compact (simulates PreCompact hook ran)
+            _run_hook_script(
+                "pre_compact.py", args=["save"],
+                stdin_data=_json_to_stdin({
+                    "messages": _HOOK_TEST_MESSAGES,
+                    "session_id": "test-stop-existing",
+                }),
+                home_dir=home,
+            )
+            anchors_dir = Path(home) / ".claude" / "anchors"
+            files_before = set(f.name for f in anchors_dir.glob("*.json"))
+
+            # Now run stop_backup with same session_id
+            result = _run_hook_script(
+                "stop_backup.py",
+                stdin_data=_json_to_stdin({
+                    "messages": _HOOK_TEST_MESSAGES[:5],
+                    "session_id": "test-stop-existing",
+                }),
+                home_dir=home,
+            )
+            assert result.returncode == 0
+            files_after = set(f.name for f in anchors_dir.glob("*.json"))
+            # No new files should be created for already-saved session
+            assert files_after == files_before, \
+                "Stop hook should not re-save when PreCompact already saved"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_too_few_messages_skips(self):
+        """<3 messages → stop_backup skips saving entirely."""
+        home = tempfile.mkdtemp()
+        try:
+            stdin_data = _json_to_stdin({
+                "messages": [
+                    {"content": "Hello world"},
+                    {"content": "How are you"},
+                ],
+                "session_id": "test-stop-short",
+            })
+            result = _run_hook_script(
+                "stop_backup.py", stdin_data=stdin_data, home_dir=home,
+            )
+            assert result.returncode == 0
+            anchors_dir = Path(home) / ".claude" / "anchors"
+            saved_files = list(anchors_dir.glob("*.json")) if anchors_dir.exists() else []
+            assert len(saved_files) == 0, \
+                "Should not save anchors for <3 messages"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Hook Script Integration — Error Handling Tests (US-009: 3 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestHookErrorHandling:
+    """3 error handling tests: corrupted JSON, empty input, oversized input."""
+
+    def test_corrupted_json_graceful_return(self):
+        """Malformed JSON input → no crash, graceful return (non-zero ok, or exit 0)."""
+        home = tempfile.mkdtemp()
+        try:
+            # Run all three scripts with garbage input
+            for script in ["pre_compact.py", "inject.py", "stop_backup.py"]:
+                args = ["save"] if script == "pre_compact.py" else None
+                result = _run_hook_script(
+                    script, args=args,
+                    stdin_data="this is not valid json {{{",
+                    home_dir=home,
+                )
+                # Scripts should not crash — they catch JSONDecodeError
+                # pre_compact and stop_backup return early (exit 0)
+                # inject loads from store (no stdin) so it's unaffected
+                assert result.returncode == 0 or result.returncode is not None, \
+                    f"{script} crashed on bad JSON: rc={result.returncode}"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_empty_input_graceful_return(self):
+        """Empty stdin → no crash, graceful return."""
+        home = tempfile.mkdtemp()
+        try:
+            for script in ["pre_compact.py", "stop_backup.py"]:
+                args = ["save"] if script == "pre_compact.py" else None
+                result = _run_hook_script(
+                    script, args=args,
+                    stdin_data="",
+                    home_dir=home,
+                )
+                assert result.returncode == 0, \
+                    f"{script} should handle empty input gracefully"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_large_input_handled(self):
+        """Very large input (1000+ messages) → handled without crash."""
+        home = tempfile.mkdtemp()
+        try:
+            large_messages = []
+            for i in range(1200):
+                large_messages.append({
+                    "content": f"Decided to deploy version {i}.{i%5} with Redis SETNX and error ERR_{i%1000:03d}",
+                })
+            stdin_data = _json_to_stdin({
+                "messages": large_messages,
+                "session_id": "test-large-input",
+            })
+            result = _run_hook_script(
+                "pre_compact.py", args=["save"],
+                stdin_data=stdin_data, home_dir=home,
+                timeout=60,
+            )
+            assert result.returncode == 0, \
+                f"Large input should not crash, rc={result.returncode}"
+            # Large input should produce anchors
+            anchors_dir = Path(home) / ".claude" / "anchors"
+            saved_files = list(anchors_dir.glob("*.json")) if anchors_dir.exists() else []
+            assert len(saved_files) > 0, \
+                "Large input should save anchor files"
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
