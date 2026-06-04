@@ -17,3 +17,7 @@ Thumbs.db
 
 # Environment
 .env
+
+# Ralph runtime (third-party)
+scripts/ralph/
+.last-branch
