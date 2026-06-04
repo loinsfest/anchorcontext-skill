@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-50%2F50-brightgreen.svg)](tests/)
 
-> **Status:** 核心管道已完成，50 单元测试通过，中等长度对话（30-40 条消息）验证通过。**尚未经过超长文本（100+ 条消息、10000+ token）的实战验证。** 欢迎测试反馈。
+> **Status:** 核心管道已完成，622 单元测试通过（含 100-500 条消息超长文本验证）。**尚无生产环境实战经验，欢迎测试反馈。**
 
 **Anchor-based context compression for Claude Code.** Extract minimal structured anchors from long conversations (~97% compression) and reconstruct context on demand — query-aware, not summary-locked.
 
