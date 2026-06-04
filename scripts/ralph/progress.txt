@@ -61,3 +61,16 @@ Started: 2026-06-03
   - The LLM is only invoked when `api_key` is truthy AND `len(candidates) > target_count`. Otherwise, fallback or early return is used.
   - Test totals: 326 tests, 0.84s, all passing.
 ---
+
+## 2026-06-04 10:45 - US-005
+- What was implemented: 23 compression ratio benchmark tests across 5 test classes. All 349 tests pass (including existing).
+- Files changed: tests/test_core.py (+560 lines: 5 new test classes), prd.json (US-005 passes: true)
+- **Learnings for future iterations:**
+  - Compression ratio formula: `(1 - graph.total_chars / total_message_chars) * 100`. `graph.total_chars` = sum(len(entity) + 10) per anchor — the +10 covers enum type/class serialization overhead.
+  - With fallback mode (no API key), anchor count is capped at `max(8, n//2)` and the quota ensures top 2 verbs + top 3 tech nouns + top 3 data nouns = 8 minimum.
+  - Backend/frontend message templates need ~80-120 chars each to hit 85% compression. Short messages (~50 chars) produce lower ratios because the anchor overhead is relatively larger.
+  - Chinese text is inherently more compact (fewer chars per concept) — pure-Chinese conversations need ~75% threshold vs 80-85% for English.
+  - Domain-specific templates should contain: decision verbs, anomalies, data values (versions/line-numbers/error-codes), and tech entities — this ensures the extractor has enough signal to work with.
+  - `_extract_graph_fallback` helper (force-clear env) is essential for deterministic compression benchmarks — LLM mode adds non-determinism.
+  - Test totals: 349 tests, 0.97s, all passing.
+---

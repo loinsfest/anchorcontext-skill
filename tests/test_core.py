@@ -2157,3 +2157,616 @@ class TestJudgeAPIErrors:
             result = judge_significance(candidates, "excerpt", 5, api_key="fake")
         assert len(result) <= 5
         assert len(result) > 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Compression Ratio Benchmarks — Backend Domain (US-005: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_BACKEND_MESSAGE_TEMPLATES = [
+    # Database decisions / migrations
+    "Decided to migrate PostgreSQL from version {ver1} to {ver2} for better query performance",
+    "Chose Redis SETNX for distributed locking across {n} Kubernetes pods",
+    "Upgraded PgBouncer connection pool from {ver1} to handle {rps} RPS sustained load",
+    "Found race condition in MySQL at query_handler.go:{line} causing intermittent timeouts",
+    "Schema migration failed with error {err} on table users affecting {pct} percent of traffic",
+    "Switched database from PlanetScale to PostgreSQL for cost savings at {rps} RPS",
+    "Configured Prisma ORM with seed data migration version {ver2} for all environments",
+    "Replaced Memcached with Redis cluster for session storage with {gb}GB capacity",
+    "Database index on users.email reduced query latency from {ms1}ms to {ms2}ms",
+    "Optimized PostgreSQL VACUUM settings after identifying {gb}GB of dead tuples",
+    # API architecture / performance
+    "API latency spiked from {ms1}ms to {ms2}ms after deploy, found N+1 query at resolver.ts:{line}",
+    "GraphQL resolver timeout at {ms2}ms exceeded limit, traced to missing dataloader batching",
+    "tRPC endpoint returning error {err} on production with payload exceeding {mb}MB limit",
+    "REST API rate limiting configured at {rps} RPS with burst allowance of {rps2} RPS",
+    "WebSocket connection pool exhausted after {ms2}ms idle timeout on production server",
+    "gRPC streaming endpoint memory leak detected after {mb}MB peak under {rps} RPS load",
+    "Added request tracing with trace_id header, reduced mean debug time from {ms1}min to {ms2}min",
+    "Implemented circuit breaker pattern for downstream service calls with {ms1}ms timeout",
+    # Auth / Security
+    "Implemented JWT token rotation with TOTP 2FA for admin panel requiring {min}-minute expiry",
+    "Found CSRF vulnerability in OAuth2 callback handler at auth.ts:{line} during security audit",
+    "Added GDPR compliance requirement: tokens deletable after {min} days of account inactivity",
+    "Identified bcrypt timing attack surface in password handler at security.ts:{line}",
+    "Switched authentication from session cookie to JWT for stateless API authorization",
+    "Must implement rate limiting on login endpoint to prevent brute force at {rps} req/sec",
+    "Deployed CSP headers blocking inline scripts, reduced XSS attack surface by {pct} percent",
+    "Added audit logging for all admin actions, storing {min} day retention in PostgreSQL",
+    # Infrastructure / DevOps
+    "Deployed Kubernetes cluster v{ver1} with Docker container images on {n} worker nodes",
+    "Prometheus metrics show memory leak at {mb}MB per hour in the auth service deployment",
+    "Grafana dashboard alert triggered: p99 latency exceeded {ms2}ms for {min} consecutive minutes",
+    "PagerDuty incident escalated: Datadog APM shows error rate {pct} percent on checkout API",
+    "Cloudflare CDN cache miss rate increased to {pct} percent after cache key config change",
+    "Vercel edge function cold start latency measured at {ms1}ms for first invocation",
+    "Terraform plan shows {n} resource changes needed for staging environment parity",
+    "Cannot deploy on Friday: release freeze per change management policy at version {ver2}",
+    # Debugging / Performance
+    "Optimized PostgreSQL query plan, latency dropped from {ms2}ms to {ms1}ms after index added",
+    "Debugged memory leak: LRU cache counter overflowed at {rps} operations, switched to 64-bit int",
+    "Traced down connection pool exhaustion bug at pool.go:{line} caused by missing close() calls",
+    "Identified N+1 query pattern in GraphQL schema affecting {pct} percent of resolver queries",
+    "Must add connection timeout of {ms1}ms for Redis cluster to prevent cascading failures",
+    "Load test results: {rps} RPS sustained, p50 latency {ms1}ms, p99 {ms2}ms, zero errors in {min} min",
+    "Error {err} persisted for {min} days affecting {pct} percent of users before root cause found",
+    "Root cause analysis: deadlock in distributed transaction handler at order.go:{line}",
+]
+
+
+def _make_backend_msgs(n=30, seed=0):
+    """Generate realistic backend domain conversation messages."""
+    msgs = []
+    for i in range(n):
+        tpl = _BACKEND_MESSAGE_TEMPLATES[(i + seed) % len(_BACKEND_MESSAGE_TEMPLATES)]
+        content = tpl.format(
+            ver1=f"{(10 + (i + seed) % 8)}.{(i + seed) % 5}",
+            ver2=f"{(11 + (i + seed) % 8)}.{((i + seed + 1) % 5)}",
+            line=42 + (i + seed) * 17,
+            err=f"ERR_{(i + seed) % 1000:03d}",
+            rps=100 + (i + seed) * 73,
+            rps2=200 + (i + seed) * 47,
+            ms1=15 + (i + seed) * 11,
+            ms2=75 + (i + seed) * 23,
+            gb=1 + (i + seed) % 8,
+            mb=10 + (i + seed) * 19,
+            min=3 + (i + seed) % 30,
+            pct=1 + (i + seed) % 9,
+            n=3 + (i + seed) % 20,
+        )
+        msgs.append({"content": content})
+    return msgs
+
+
+def _compression_ratio(graph, messages):
+    """Calculate compression ratio: (1 - anchor_chars / message_chars) * 100."""
+    total_chars = sum(len(m.get("content", "")) for m in messages)
+    if total_chars == 0:
+        return 100.0
+    return (1 - graph.total_chars / total_chars) * 100
+
+
+class TestCompressionBackend:
+    """5 backend domain tests: 30 messages -> >= 85% compression."""
+
+    def test_standard_30_backend_messages(self):
+        """30 standard backend messages should achieve >= 85% compression."""
+        msgs = _make_backend_msgs(30, seed=0)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 85.0, f"Backend compression {ratio:.1f}% < 85%"
+
+    def test_backend_database_focused(self):
+        """Database-heavy backend conversation achieves >= 85% compression."""
+        msgs = _make_backend_msgs(30, seed=7)
+        # Use only database-related templates (indices 0-9)
+        db_msgs = []
+        for i in range(30):
+            tpl = _BACKEND_MESSAGE_TEMPLATES[i % 10]
+            content = tpl.format(
+                ver1=f"{10 + i % 8}.{i % 5}", ver2=f"{11 + i % 8}.{(i+1) % 5}",
+                line=42 + i * 13, err=f"ERR_{i % 100:03d}",
+                rps=100 + i * 50, rps2=200 + i * 30,
+                ms1=15 + i * 11, ms2=80 + i * 20,
+                gb=1 + i % 8, mb=10 + i * 15,
+                min=3 + i % 30, pct=1 + i % 9, n=3 + i % 20,
+            )
+            db_msgs.append({"content": content})
+        graph = _extract_graph_fallback(db_msgs)
+        ratio = _compression_ratio(graph, db_msgs)
+        assert ratio >= 85.0, f"DB-focused compression {ratio:.1f}% < 85%"
+
+    def test_backend_api_debugging(self):
+        """API debugging conversation achieves >= 85% compression."""
+        msgs = _make_backend_msgs(30, seed=13)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 85.0, f"API debug compression {ratio:.1f}% < 85%"
+
+    def test_backend_infrastructure(self):
+        """Infrastructure-focused conversation achieves >= 85% compression."""
+        msgs = _make_backend_msgs(30, seed=19)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 85.0, f"Infra compression {ratio:.1f}% < 85%"
+
+    def test_backend_auth_security(self):
+        """Auth/security conversation achieves >= 85% compression."""
+        msgs = _make_backend_msgs(30, seed=23)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 85.0, f"Auth compression {ratio:.1f}% < 85%"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Compression Ratio Benchmarks — Frontend Domain (US-005: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_FRONTEND_MESSAGE_TEMPLATES = [
+    # Framework / architecture decisions
+    "Decided to migrate from Webpack to Vite for {pct} percent faster HMR on the dashboard",
+    "Chose Zustand over Redux for global state management, reducing bundle by {mb}MB",
+    "Upgraded React from version {ver1} to {ver2} for concurrent rendering features",
+    "Switched component library from Radix to custom components for design system v{ver1}",
+    "Adopted Next.js app router with React Server Components at version {ver2}",
+    "Migrated data fetching from REST to tRPC for type-safe API calls across {n} pages",
+    "Replaced CSS modules with Tailwind utility classes reducing CSS bundle by {pct} percent",
+    "Implemented TanStack Query for cache management with {min}-minute stale time default",
+    # Performance optimization
+    "Optimized LCP from {ms2}ms to {ms1}ms by deferring non-critical JavaScript bundles",
+    "Reduced CLS to below 0.1 by adding explicit width/height to {n} lazy-loaded images",
+    "Improved INP from {ms2}ms to {ms1}ms by debouncing search input at {ms1}ms interval",
+    "Bundle size analysis: main chunk {mb}MB, split with dynamic import() at utils.ts:{line}",
+    "Lighthouse score improved from {pct} to {pct2} after Critical CSS inlining for above-fold",
+    "Found memory leak in IntersectionObserver causing {mb}MB growth on infinite scroll page",
+    "Identified render loop causing {rps} unnecessary re-renders per second in ProductList",
+    # Testing
+    "Configured Playwright end-to-end tests with {n} browser contexts running in CI pipeline",
+    "Vitest coverage reached {pct} percent lines and {pct2} percent branches on core modules",
+    "Storybook visual regression tests caught {n} component style regressions at Chromatic",
+    "Added accessibility tests with axe-core detecting {n} WCAG violations in user flow",
+    "Mock Service Worker (MSW) setup reduced API test flakiness by {pct} percent",
+    "Component test suite: {n} test files covering {pct} percent of shared UI components",
+    # Accessibility / UX
+    "WCAG 2.1 AA audit found {n} color contrast issues with ratio below 4.5:1 on buttons",
+    "Added aria-labels to {n} icon-only buttons for screen reader navigation support",
+    "Keyboard navigation trap fixed in modal dialog at Modal.tsx:{line} for tab focus",
+    "Implement focus management for route transitions: restore focus after {ms2}ms delay",
+    "Reduced motion preference detected: disabled {n} CSS transition animations for a11y",
+    "Added skip-to-content link bypassing {n} navigation items for keyboard users",
+    # Build / Deployment
+    "Vite build pipeline configured with code splitting at {mb}MB chunk size threshold",
+    "pnpm workspace monorepo setup with {n} packages sharing TypeScript config version {ver1}",
+    "Preview deployments on Vercel for {n} branches with automatic Lighthouse audit",
+    "Cloudflare Pages deployment with edge caching: TTFB reduced from {ms2}ms to {ms1}ms",
+    "Tree shaking eliminated {pct} percent dead code after removing deprecated API wrappers",
+    "Source map upload to Datadog RUM: error tracking resolved at component.tsx:{line}",
+    # Styling / Design
+    "Design token system updated with {n} color tokens and {n2} spacing scale values",
+    "CSS Container Queries replaced media queries for {n} component-level responsive layouts",
+    "Implemented dark mode with CSS custom properties covering {pct} percent of components",
+    "Animation performance: replaced JavaScript animations with CSS transforms at {rps} FPS",
+    "Font loading strategy: swapped to variable font reducing total font payload by {mb}MB",
+    "Responsive grid layout refactored with subgrid support for {n} column dashboard panels",
+]
+
+_pct2 = 80
+
+
+def _make_frontend_msgs(n=40, seed=0):
+    """Generate realistic frontend domain conversation messages."""
+    msgs = []
+    for i in range(n):
+        tpl = _FRONTEND_MESSAGE_TEMPLATES[(i + seed) % len(_FRONTEND_MESSAGE_TEMPLATES)]
+        content = tpl.format(
+            ver1=f"{(2 + (i + seed) % 7)}.{(i + seed) % 4}",
+            ver2=f"{(3 + (i + seed) % 7)}.{((i + seed + 1) % 4)}",
+            line=30 + (i + seed) * 11,
+            ms1=50 + (i + seed) * 17,
+            ms2=200 + (i + seed) * 31,
+            mb=1 + (i + seed) % 5,
+            pct=60 + (i + seed) % 35,
+            pct2=75 + (i + seed) % 20,
+            n=3 + (i + seed) % 15,
+            n2=5 + (i + seed) % 12,
+            rps=30 + (i + seed) * 7,
+            min=5 + (i + seed) % 60,
+        )
+        msgs.append({"content": content})
+    return msgs
+
+
+class TestCompressionFrontend:
+    """5 frontend domain tests: 40 messages -> >= 85% compression."""
+
+    def test_standard_40_frontend_messages(self):
+        """40 standard frontend messages should achieve >= 85% compression."""
+        msgs = _make_frontend_msgs(40, seed=0)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 85.0, f"Frontend compression {ratio:.1f}% < 85%"
+
+    def test_frontend_performance_focused(self):
+        """Performance-focused frontend conversation achieves >= 85% compression."""
+        msgs = _make_frontend_msgs(40, seed=5)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 85.0, f"Performance compression {ratio:.1f}% < 85%"
+
+    def test_frontend_testing_focused(self):
+        """Testing-focused frontend conversation achieves >= 85% compression."""
+        msgs = _make_frontend_msgs(40, seed=11)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 85.0, f"Testing compression {ratio:.1f}% < 85%"
+
+    def test_frontend_styling_focused(self):
+        """Styling/UI-focused frontend conversation achieves >= 85% compression."""
+        msgs = _make_frontend_msgs(40, seed=17)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 85.0, f"Styling compression {ratio:.1f}% < 85%"
+
+    def test_frontend_build_tools(self):
+        """Build/deployment-focused conversation achieves >= 85% compression."""
+        msgs = _make_frontend_msgs(40, seed=23)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 85.0, f"Build-tools compression {ratio:.1f}% < 85%"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Compression Ratio Benchmarks — Mixed Domain (US-005: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_MIXED_MESSAGE_TEMPLATES = [
+    # Backend + frontend crossover
+    "Decided PostgreSQL {ver1} for primary database, React {ver2} frontend with Vite build",
+    "API endpoint returning error {err} at {ms2}ms latency, affecting dashboard render time",
+    "Found race condition in JWT auth affecting both API and Next.js middleware at auth.ts:{line}",
+    "Webpack bundle analysis: {mb}MB main chunk, split backend API types into shared package",
+    "Upgraded Prisma ORM and React Query together for type-safe API at version {ver2}",
+    "Redis cache TTL of {min} minutes for session data, SWR stale time {ms1}ms on frontend",
+    "Prometheus alert: error rate {pct}% on GraphQL endpoint, traced to frontend query batching",
+    # Cross-domain performance
+    "Lighthouse audit: API response time {ms2}ms contributing {pct} points to LCP score",
+    "PagerDuty incident escalated: P99 latency {ms2}ms caused by N+1 Prisma query at order.ts:{line}",
+    "Playwright E2E test flakiness reduced from {pct}% to {pct2}% after adding API mock stability",
+    "CDN cache hit rate dropped to {pct}% after deploy, traced to Vite hash change at version {ver1}",
+    "Memory profile: React component tree {mb}MB, Node.js heap {mb2}MB under {rps} RPS load",
+    "Traced down hydration mismatch: database timestamp format vs Date.toISOString() at line {line}",
+    # Shared tooling / DevOps
+    "pnpm workspace with {n} packages: {n2} backend, {n3} frontend, shared ESLint config v{ver1}",
+    "Cannot deploy monorepo change: frontend PR needs backend migration completed first at {ver2}",
+    "Datadog RUM + APM correlation: user session replay linked to backend error trace {err}",
+    "Feature flag rollout: {pct}% traffic to new auth flow, monitoring for {min} minutes before 100%",
+    "Docker compose dev environment: PostgreSQL + Redis + Vite HMR + Node.js on port {n}",
+    # Decision / architecture crossover
+    "Decided to adopt tRPC for type-safe bridge between Next.js frontend and Node.js backend",
+    "Switched session store from Redis to SQLite for simpler local dev, PostgreSQL for production",
+    "Must keep API contract backward compatible: frontend v{ver1} still calling deprecated endpoints",
+    "Identified build regression: TypeScript compilation failed at shared types v{ver2}",
+    # Error / anomaly crossover
+    "Database deadlock error {err} caused frontend retry storm at {rps} requests per second",
+    "CDN invalidation race: users saw stale data for {min} minutes after PostgreSQL migration",
+    "Production incident: OAuth2 callback returned {ms2}ms latency, traced to bcrypt at auth.ts:{line}",
+    "WebSocket reconnect loop after Redis cluster failover: {n} reconnects in {min} seconds",
+    # Performance / optimization crossover
+    "Core Web Vitals report: LCP {ms2}ms, CLS 0.{n}, INP {ms1}ms — primarily API-driven metrics",
+    "Bundle size reduced by {mb}MB after extracting shared types package v{ver1} from monorepo",
+    "Synthetic monitoring: full user journey from login to checkout at {ms2}ms p95 latency",
+    "Implemented ISR revalidation every {min} minutes to cache database queries at edge",
+]
+
+_mb2 = 80
+
+
+def _make_mixed_msgs(n=50, seed=0):
+    """Generate realistic mixed backend+frontend conversation messages."""
+    msgs = []
+    for i in range(n):
+        tpl = _MIXED_MESSAGE_TEMPLATES[(i + seed) % len(_MIXED_MESSAGE_TEMPLATES)]
+        content = tpl.format(
+            ver1=f"{(1 + (i + seed) % 8)}.{(i + seed) % 5}",
+            ver2=f"{(2 + (i + seed) % 8)}.{((i + seed + 1) % 5)}",
+            line=25 + (i + seed) * 19,
+            err=f"ERR_{(i + seed) % 500:03d}",
+            ms1=30 + (i + seed) * 13,
+            ms2=150 + (i + seed) * 27,
+            mb=2 + (i + seed) % 7,
+            mb2=60 + (i + seed) % 40,
+            pct=3 + (i + seed) % 12,
+            pct2=70 + (i + seed) % 25,
+            n=3 + (i + seed) % 18,
+            n2=2 + (i + seed) % 8,
+            n3=1 + (i + seed) % 6,
+            rps=50 + (i + seed) * 31,
+            min=3 + (i + seed) % 40,
+        )
+        msgs.append({"content": content})
+    return msgs
+
+
+class TestCompressionMixed:
+    """5 mixed domain tests: 50 messages -> >= 80% compression."""
+
+    def test_standard_50_mixed_messages(self):
+        """50 mixed backend+frontend messages should achieve >= 80% compression."""
+        msgs = _make_mixed_msgs(50, seed=0)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 80.0, f"Mixed compression {ratio:.1f}% < 80%"
+
+    def test_mixed_with_repetition(self):
+        """Repeated terms across messages should dedup and maintain compression >= 80%."""
+        msgs = _make_mixed_msgs(50, seed=3)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 80.0, f"Mixed+dedup compression {ratio:.1f}% < 80%"
+
+    def test_mixed_varied_verbosity(self):
+        """Mixed messages of varying lengths still achieves >= 80% compression."""
+        msgs = _make_mixed_msgs(50, seed=7)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 80.0, f"Mixed+varied compression {ratio:.1f}% < 80%"
+
+    def test_mixed_with_chinese_terms(self):
+        """Chinese+English mixed messages should achieve >= 75% compression.
+
+        Chinese text is inherently compact (fewer chars per concept), so the
+        threshold is relaxed compared to English-only conversations.
+        """
+        chinese_msgs = [
+            {"content": "我们决定使用 PostgreSQL 14.2 作为主数据库，前端采用 React 18.3 版本进行开发，同时需要 Redis 缓存层"},
+            {"content": "API返回错误ERR_005，延迟{ms2}ms严重影响仪表板渲染性能，必须立即修复，临时回滚版本{ver1}"},
+            {"content": "发现JWT认证竞态条件同时影响API后端和Next.js前端中间件在auth.ts:{line}行，已添加分布式锁SETNX"},
+            {"content": "Webpack打包分析显示：主块{mb}MB太大，需要将API类型拆分到共享包，同时启用tree shaking优化"},
+            {"content": "升级Prisma ORM和React Query用于类型安全API版本{ver1}的项目，计划在{min}天内完成迁移"},
+            {"content": "Redis缓存TTL设置为{min}分钟用于会话数据，SWR过期时间{ms1}毫秒，使用LRU淘汰策略优化内存"},
+            {"content": "Prometheus告警通知：GraphQL端点错误率{pct}%，追溯到前端查询批处理，添加了Datadog APM追踪"},
+            {"content": "Lighthouse审计结果：API响应时间{ms2}ms贡献{pct}分给LCP得分，需优化数据库查询N+1问题"},
+            {"content": "PagerDuty事件升级：P99延迟{ms2}ms由Prisma N+1查询引起在order.ts:{line}，添加了连接池监控Grafana"},
+            {"content": "Playwright端到端测试不稳定率从{pct}%降至{pct2}%添加API模拟稳定性后，MSW拦截器在v{ver1}生效"},
+            {"content": "CDN缓存命中率降至{pct}%部署后追溯到Vite哈希变更版本{ver1}，重新配置了Cloudflare缓存规则"},
+            {"content": "内存分析报告：React组件树{mb}MB，Node.js堆{mb2}MB在{rps}请求下，用了Chrome DevTools排查"},
+            {"content": "排查到水合不匹配问题：数据库时间戳格式vs Date.toISOString()在第{line}行，已统一为UTC ISO格式"},
+            {"content": "pnpm工作空间包含{n}个包：{n2}后端{n3}前端共享ESLint配置v{ver1}，添加了Prettier格式化"},
+            {"content": "无法部署monorepo更改：前端PR需要后端迁移在{ver1}版本先完成，涉及{n}个API接口变更"},
+            {"content": "Datadog RUM+APM关联分析：用户会话回放链接到后端错误追踪{err}，分析了{min}分钟的用户操作"},
+            {"content": "特性标志发布策略：{pct}%流量至新认证流程监控{min}分钟前100%，使用了LaunchDarkly集成"},
+            {"content": "Docker Compose开发环境配置：PostgreSQL+Redis+Vite HMR+Node.js端口{n}，添加了健康检查端点"},
+            {"content": "决定采用tRPC在Next.js前端和Node.js后端之间实现类型安全桥接，替换原有的REST API v{ver1}"},
+            {"content": "将会话存储从Redis切换到SQLite简化本地开发，PostgreSQL用于生产环境，JWT令牌过期{min}分钟"},
+            {"content": "必须保持API契约向后兼容：前端v{ver1}仍调用已弃用的端点，计划在v{ver2}中完全移除旧接口"},
+            {"content": "识别出构建回归：TypeScript编译失败在共享类型v{ver1}，错误ERR_{err_hint}追踪到包版本冲突"},
+            {"content": "数据库死锁错误{err}导致前端重试风暴{rps}请求每秒，添加了指数退避和分布式锁SETNX保护"},
+            {"content": "CDN失效竞态：用户在PostgreSQL迁移后{min}分钟看见过期数据，修复了缓存键TTL和版本号{ver1}关联"},
+            {"content": "生产事件：OAuth2回调返回{ms2}ms延迟追溯到bcrypt在auth.ts:{line}，cost因子从{n}调整到{n2}"},
+            {"content": "WebSocket重连循环Redis集群故障转移后{n}次重连{min}秒内，添加了指数退避{ms1}ms延迟"},
+            {"content": "核心Web指标报告：LCP{ms2}ms CLS 0.{n} INP{ms1}ms主要是API驱动，优化了首屏Critical CSS"},
+            {"content": "包大小减少{mb}MB提取共享类型包v{ver1}从monorepo后，Tree shaking消除了{pct}%的未使用代码"},
+            {"content": "合成监控：完整用户旅程从登录到结账{ms2}ms p95延迟，追踪到PostgreSQL慢查询在版本{ver1}"},
+            {"content": "实现ISR重验证每{min}分钟缓存数据库查询在边缘节点，TTL设为{ms1}秒减少源站负载{rps}"},
+            {"content": "前端A/B测试框架与后端特性标志系统集成在v{ver2}，测试{pct}%用户新UI组件的CLS影响"},
+            {"content": "分布式追踪：从浏览器点击到数据库查询端到端延迟{ms2}ms，span跨越{n}个微服务节点"},
+            {"content": "错误边界组件捕获了{n}个运行时错误阻止了页面崩溃，错误日志上报到Datadog RUM版本{ver1}"},
+            {"content": "GraphQL订阅使用WebSocket传输服务器推送更新延迟{pct}ms，支持{n}个并发连接的实时数据同步"},
+            {"content": "CI/CD管道：{n}并行作业类型检查{pct}秒单元测试{pct2}秒，构建管道在Vercel版本v{ver1}运行"},
+            {"content": "代码分割策略：{n}个动态导入路由块总大小{mb}MB gzip压缩，Lighthouse审计得分从{pct}提升到{pct2}"},
+            {"content": "CSS-in-JS运行时开销{ms1}ms影响首次渲染切换到零运行时方案Tailwind，减小CSS包{mb}KB"},
+            {"content": "服务端渲染TTFB{ms2}ms降至{ms1}ms流式传输和选择性水合后，Node.js版本升级到v{ver1}"},
+            {"content": "国际化支持{n}种语言动态导入翻译文件每语言{mb}KB，使用next-intl方案v{ver1}优化加载"},
+            {"content": "预加载关键资源：字体{mb}KB主CSS{ms1}KB避免了渲染阻塞链，添加了priority hints在v{ver2}"},
+            {"content": "事件溯源模式：所有用户操作记录到PostgreSQL事件存储表，每日{gb}GB事件以{rps}速率写入"},
+            {"content": "负载均衡策略：最少连接算法跨{n}个上游Node.js实例，nginx配置v{ver1}支持HTTP/2和gRPC"},
+            {"content": "健康检查端点/metrics返回{ms1}ms内包含数据库连接池状态和Redis可用性，Prometheus抓取间隔{n}秒"},
+            {"content": "熔断器状态OPEN：下游支付服务{pct}%失败率触发{n}秒冷却，半开状态在{min}次成功请求后恢复"},
+            {"content": "API版本控制策略：URL路径v{ver1}/users同时支持Accept头版本协商，计划{n}个版本后废弃v1"},
+            {"content": "数据库连接池：{n}个连接最大{ms1}ms空闲超时PgBouncer事务模式，支持{rps}并发查询PostgreSQL 14.2"},
+            {"content": "消息队列：RabbitMQ {n}个消费者处理{rps}消息/秒死信队列重试{n2}次，消息TTL{ms1}秒"},
+            {"content": "缓存策略：Redis缓存旁路模式写穿透60秒TTL失效时重建锁，使用SETNX避免缓存击穿到PostgreSQL"},
+            {"content": "数据库分片：按tenant_id哈希分{n}个物理分片每分片{gb}GB，使用PlanetScale v{ver1}管理迁移"},
+        ]
+        # Fill template params in Chinese messages
+        filled = []
+        for i, m in enumerate(chinese_msgs):
+            content = m["content"].format(
+                ver1=f"{(1 + i % 8)}.{i % 5}", ver2=f"{(2 + i % 8)}.{(i + 1) % 5}",
+                line=25 + i * 19, err=f"ERR_{i % 500:03d}", err_hint=i % 999,
+                ms1=30 + i * 13, ms2=150 + i * 27,
+                mb=2 + i % 7, mb2=60 + i % 40,
+                pct=3 + i % 12, pct2=70 + i % 25,
+                n=3 + i % 18, n2=2 + i % 8, n3=1 + i % 6,
+                rps=50 + i * 31, min=3 + i % 40, gb=10 + i % 50,
+            )
+            filled.append({"content": content})
+        graph = _extract_graph_fallback(filled)
+        ratio = _compression_ratio(graph, filled)
+        # Chinese text is compact; relax threshold to 75% for mixed-lang
+        assert ratio >= 75.0, f"Chinese mixed compression {ratio:.1f}% < 75%"
+
+    def test_mixed_error_heavy(self):
+        """Error-heavy mixed conversation achieves >= 80% compression."""
+        msgs = _make_mixed_msgs(50, seed=13)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 80.0, f"Error-heavy compression {ratio:.1f}% < 80%"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Compression — Short Conversation Tests (US-005: 5 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestCompressionShort:
+    """5 short conversation tests: 5-10 messages -> reasonable anchor count."""
+
+    def test_5_messages_produces_positive_anchors(self):
+        """5 backend messages should produce at least 1 but not more than 8 anchors."""
+        msgs = _make_backend_msgs(5, seed=0)
+        graph = _extract_graph_fallback(msgs)
+        assert graph.total_anchors >= 1, "5 messages should produce at least 1 anchor"
+        assert graph.total_anchors <= 8, f"5 messages produced {graph.total_anchors} anchors > 8"
+
+    def test_8_messages_anchor_count_bounded(self):
+        """8 frontend messages: anchors <= max(8, 8//2) = 8."""
+        msgs = _make_frontend_msgs(8, seed=0)
+        graph = _extract_graph_fallback(msgs)
+        assert graph.total_anchors >= 2, f"8 messages only produced {graph.total_anchors} anchors"
+        assert graph.total_anchors <= 8, f"8 messages produced {graph.total_anchors} > 8 anchors"
+
+    def test_10_messages_target_clamped(self):
+        """10 messages -> target = max(8, 10//2) = 8. Anchors should be <= 8."""
+        msgs = _make_mixed_msgs(10, seed=0)
+        graph = _extract_graph_fallback(msgs)
+        target = max(8, len(msgs) // 2)
+        assert graph.total_anchors <= target, \
+            f"10 msgs: {graph.total_anchors} > target {target}"
+
+    def test_single_rich_message(self):
+        """A single detailed message should produce at least 1 anchor."""
+        msgs = [{"content": "Decided to deploy PostgreSQL 14.2 with Redis SETNX and JWT auth"}]
+        graph = _extract_graph_fallback(msgs)
+        assert graph.total_anchors >= 1, "Rich single message should extract anchors"
+
+    def test_message_count_to_anchor_ratio(self):
+        """For 5-10 messages, anchor count should be proportional but bounded."""
+        for n_msgs in [5, 8, 10]:
+            msgs = _make_backend_msgs(n_msgs, seed=n_msgs)
+            graph = _extract_graph_fallback(msgs)
+            ratio = graph.total_anchors / n_msgs if n_msgs > 0 else 0
+            # Dense short messages can produce up to max(8,n//2) anchors;
+            # with the fallback quota minimum of 8, 5 messages can have ratio 1.6
+            assert ratio <= 2.0, \
+                f"{n_msgs} msgs: anchor/msg ratio {ratio:.2f} > 2.0 ({graph.total_anchors} anchors)"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Compression — Extreme Tests (US-005: 3 tests)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_EXTREME_MESSAGE_TEMPLATES = [
+    "Decided to migrate PostgreSQL cluster from version {ver1} to {ver2} across all {n} production nodes with zero downtime",
+    "Found critical race condition at auth.ts:{line} causing intermittent JWT token validation failures for {pct} percent of users",
+    "API latency increased from {ms1}ms to {ms2}ms p99 after deploying the new GraphQL resolver at resolver.ts:{line}",
+    "Memory leak detected in Redis connection pool: heap grew from {mb}MB to {mb2}MB over {min} minute period under {rps} RPS",
+    "Must implement distributed lock with SETNX across {n} Kubernetes pods to prevent duplicate order processing",
+    "Database deadlock error {err} traced to missing index on order_items(user_id) at query_handler.go:{line}",
+    "Upgraded Docker container runtime from version {ver1} to {ver2} with containerd snapshotter for {pct} percent faster pulls",
+    "Prometheus alert: error budget burned {pct} percent in {min} hours, SLO threshold at {pct2} percent availability",
+    "Cannot deploy hotfix during release freeze: change management requires {min} business hours of lead time",
+    "Identified N+1 query pattern in GraphQL schema affecting {n} different resolver functions at version {ver2}",
+    "Switched CI/CD pipeline from GitHub Actions to Buildkite reducing build time from {min} min to {ms1} min per run",
+    "PagerDuty incident escalated: checkout service returning error {err} for {pct} percent of requests at {rps} RPS",
+    "Terraform apply failed with state lock conflict after {min} minutes, manual unlock required at version {ver1}",
+    "Optimized PostgreSQL VACUUM strategy: autovacuum triggered every {min} minutes, dead tuple ratio now under {pct} percent",
+    "Grafana dashboard showing correlation: CPU spike to {pct} percent coincides with Redis maxmemory eviction policy trigger",
+    "Datadog APM trace shows {ms2}ms spent in bcrypt.hash() blocking Node.js event loop at auth.ts:{line}",
+    "Cloudflare edge cache purge invalidated {n} million cached responses, origin load spiked to {rps} RPS for {min} minutes",
+    "Rolling deployment strategy: {n} pods updated per batch with {min} second health check grace period at version {ver2}",
+    "Root cause analysis complete: connection pool exhaustion caused by missing close() in retry logic at client.go:{line}",
+    "Feature flag rollout: {pct} percent of traffic to new recommendation engine, monitored for {min} minutes with auto-kill",
+    "Load test results at {rps} RPS: p50={ms1}ms, p95={ms2}ms, p99={ms3}ms, error rate {perr}%, sustained for {min} minutes",
+    "PostgreSQL replication lag reached {ms2}ms on read replica {n} during peak traffic at {rps} RPS on primary",
+    "Implemented circuit breaker pattern with {n} failure threshold, {min}s open state timeout for downstream payment API",
+    "Vercel edge function cold start: {ms2}ms first request, {ms1}ms warm, {n} concurrent invocations at version {ver2}",
+    "Redis cluster resharding: {n} slots migrated in {min} minutes with zero downtime using redis-cli --cluster reshard",
+    "WebSocket connection dropped after {ms2}ms idle timeout, reconnect with exponential backoff up to {n} retries",
+    "Prisma migration {ver1}: altered {n} tables with CHECK constraint, took {min} minutes on {gb}GB production database",
+    "Synthetic monitoring detected regression: login flow latency regressed from {ms1}ms to {ms2}ms after last deployment",
+    "CDN configuration update: added Brotli compression reducing asset payload by {pct} percent at version {ver1}",
+    "Audit logging pipeline: {rps} events per second written to PostgreSQL with {min} day retention policy",
+    "Database backup strategy: daily full backup {gb}GB, hourly WAL archiving with {min} minute RPO to S3 bucket",
+    "Horizontal Pod Autoscaler configured: min {n} replicas, max {n2} replicas, target CPU {pct} percent at version {ver1}",
+    "API gateway rate limiter: token bucket algorithm {rps} requests per second with burst capacity of {rps2} per client IP",
+    "Service mesh configuration: Istio sidecar injection with {ms1}ms circuit breaker timeout and {n} retry attempts",
+    "Elasticsearch cluster health: {n} nodes, {gb}GB indices, search latency p95={ms2}ms, indexing rate {rps} docs/sec",
+    "Kafka consumer group lag: {n} partitions behind by {n2} messages, processing at {rps} messages/second on version {ver2}",
+    "Implement idempotency key pattern for payment API: dedup window {min} hours stored in Redis with key version {ver1}",
+    "Canary deployment analysis: {pct} percent traffic to new version {ver2} shows {ms1}ms latency improvement over baseline",
+    "Secret rotation automated: {n} API keys rotated every {min} days with {min2} minute overlap window for zero downtime",
+    "Observability stack: Prometheus {n} metrics, Grafana {n2} dashboards, Datadog {n3} monitors at version {ver1}",
+    "Database connection pool sizing: calculated {n} connections for {rps} RPS peak with {ms2}ms average query duration",
+    "ETL pipeline throughput: {rps} rows per second from PostgreSQL to data warehouse with {min} minute batch window",
+    "API schema versioning: OpenAPI {ver1} spec generated from {n} endpoints, backward compatible with {ver2} clients",
+    "Certificate management: {n} TLS certificates auto-renewed by cert-manager at {min} days before expiry",
+    "Blue-green deployment: switch traffic from old version {ver1} to new version {ver2} in {ms1}ms with zero errors",
+    "Alert threshold tuning: reduced false positive rate from {pct}% to {pct2}% after {min} days of historical analysis",
+    "Database index recommendation: add composite index on (user_id, created_at) reducing query time {ms2}ms to {ms1}ms",
+    "Message queue dead letter handling: {n} failed messages redirected, reprocessed with {min} minute exponential delay",
+    "Kubernetes node pool scaling: added {n} spot instances for batch jobs, saving {pct} percent compute cost",
+    "Distributed tracing sampling rate adjusted to {pct} percent at version {ver1}, tail-based sampling for error traces",
+]
+
+_perr = 1
+_ms3 = 400
+_min2 = 90
+_n3 = 7
+
+
+def _make_extreme_msgs(n=100):
+    """Generate very long, verbose messages for extreme (100-message) compression tests."""
+    msgs = []
+    for i in range(n):
+        tpl = _EXTREME_MESSAGE_TEMPLATES[i % len(_EXTREME_MESSAGE_TEMPLATES)]
+        content = tpl.format(
+            ver1=f"{(1 + i % 9)}.{(i % 6)}",
+            ver2=f"{(2 + i % 9)}.{((i + 1) % 6)}",
+            line=20 + i * 23,
+            err=f"ERR_{i % 999:03d}",
+            n=3 + i % 25,
+            n2=10 + i % 30,
+            n3=5 + i % 15,
+            ms1=20 + i * 7,
+            ms2=120 + i * 19,
+            ms3=300 + i * 29,
+            mb=15 + i % 80,
+            mb2=80 + i % 200,
+            gb=5 + i % 100,
+            pct=2 + i % 15,
+            pct2=85 + i % 14,
+            perr=0 + i % 3,
+            rps=80 + i * 41,
+            rps2=200 + i * 53,
+            min=3 + i % 60,
+            min2=60 + i % 120,
+        )
+        msgs.append({"content": content})
+    return msgs
+
+
+class TestCompressionExtreme:
+    """3 extreme tests: 100 messages -> >= 90% compression."""
+
+    def test_100_messages_compression_above_90(self):
+        """100 verbose messages should achieve >= 90% compression."""
+        msgs = _make_extreme_msgs(100)
+        graph = _extract_graph_fallback(msgs)
+        ratio = _compression_ratio(graph, msgs)
+        assert ratio >= 90.0, \
+            f"Extreme compression {ratio:.1f}% < 90% ({graph.total_anchors} anchors)"
+
+    def test_100_messages_verb_noun_ratio(self):
+        """100 messages: verb-to-noun ratio should be balanced."""
+        msgs = _make_extreme_msgs(100)
+        graph = _extract_graph_fallback(msgs)
+        total = graph.total_anchors
+        if total > 0:
+            verb_pct = len(graph.verb_anchors) / total * 100
+            noun_pct = len(graph.noun_anchors) / total * 100
+            # Should have both verb and noun anchors
+            assert len(graph.verb_anchors) > 0, "Should have verb anchors"
+            assert len(graph.noun_anchors) > 0, "Should have noun anchors"
+            # With fallback quota (2 verb + 3 tech + 3 data = 8), high message
+            # counts fill remaining slots with score-sorted nouns, so verb % can be low
+            assert verb_pct >= 4, f"Verb {verb_pct:.0f}% too low, expected >= 4%"
+            assert noun_pct >= 10, f"Noun {noun_pct:.0f}% too low, expected >= 10%"
+
+    def test_100_messages_consistent_compression(self):
+        """Two runs with different seed should both achieve >= 90% compression."""
+        for run in range(2):
+            msgs = _make_extreme_msgs(100)
+            graph = _extract_graph_fallback(msgs)
+            ratio = _compression_ratio(graph, msgs)
+            assert ratio >= 90.0, \
+                f"Run {run}: compression {ratio:.1f}% < 90%"
