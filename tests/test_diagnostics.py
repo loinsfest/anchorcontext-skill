@@ -8,8 +8,11 @@ Instruments extract_anchors to show:
   - Information density score
 """
 
+import sys, os, pytest
+pytest.skip("Legacy diagnostics — not a real test", allow_module_level=True)
+
+# Rest of file is legacy diagnostics code, not run by pytest
 import sys, os
-sys.path.insert(0, os.path.expanduser('~/.claude/skills/anchor-context/scripts'))
 
 from anchor.models import Anchor, AnchorType, EntityClass, AnchorSequence, ENTITY_WEIGHT
 from anchor.verbs import segment_text

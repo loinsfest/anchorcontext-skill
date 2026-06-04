@@ -1,0 +1,14 @@
+# Ralph Progress Log — Anchor Context Testing
+Started: 2026-06-03
+
+## Codebase Patterns
+- Test directory: tests/
+- Source directory: anchor-context/scripts/anchor/
+- Python 3.9+, pytest 9.x
+- Run tests: `python -m pytest tests/ -v`
+- No external dependencies needed for testing (fallback mode)
+- LLM judge tests require DEEPSEEK_API_KEY env var
+- Hook scripts tested via subprocess with mock stdin
+- Generated test data goes in tests/data/
+
+---

@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """Test LLM judge with DeepSeek API."""
-import sys, os, json
+import sys, os, json, pytest
 sys.path.insert(0, os.path.expanduser('~/.claude/skills/anchor-context/scripts'))
-from openai import OpenAI
 
 api_key = os.environ.get('DEEPSEEK_API_KEY', '')
+if not api_key:
+    pytest.skip("No DEEPSEEK_API_KEY set", allow_module_level=True)
+
+from openai import OpenAI
 client = OpenAI(api_key=api_key, base_url='https://api.deepseek.com/v1')
 
 candidates = [
