@@ -77,7 +77,7 @@ _ANOMALY_VERBS_EN = [
     "error", "fail", "timeout", "crash", "hang", "block", "leak",
     "overflow", "deadlock", "race condition", "conflict", "exception",
     "broken", "corrupted", "missing", "null pointer", "segfault",
-    "panic", "OOM", "thrashing", "bottleneck", "degraded",
+    "panic", "crashed", "OOM", "thrashing", "bottleneck", "degraded",
     "returned null", "returned empty", "threw",
 ]
 

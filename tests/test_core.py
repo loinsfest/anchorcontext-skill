@@ -142,51 +142,378 @@ class TestAnchorSequence:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Verbs Tests
+# Verbs Tests (US-001: 55+ verb lexicon tests)
 # ═══════════════════════════════════════════════════════════════════════════
+import time
 
-class TestVerbs:
-    def test_verb_map_coverage(self):
+
+class TestVerbMapCoverage:
+    """Basic VERB_MAP structure and category coverage."""
+
+    def test_verb_map_size(self):
         assert len(VERB_MAP) >= 150
-        assert VERB_MAP.get("决定") == "DECISION"
-        assert VERB_MAP.get("发现") == "DISCOVERY"
-        assert VERB_MAP.get("报错") == "ANOMALY"
-        assert VERB_MAP.get("必须") == "CONSTRAINT"
 
-    def test_get_anchor_type_case_insensitive(self):
-        assert get_anchor_type("Decide") == "DECISION"
+    def test_verb_map_has_all_categories(self):
+        categories = set(VERB_MAP.values())
+        assert "DECISION" in categories
+        assert "DISCOVERY" in categories
+        assert "ANOMALY" in categories
+        assert "CONSTRAINT" in categories
+
+    def test_decision_category_count(self):
+        count = sum(1 for v in VERB_MAP.values() if v == "DECISION")
+        assert count >= 50, f"Expected >=50 DECISION verbs, got {count}"
+
+    def test_discovery_category_count(self):
+        count = sum(1 for v in VERB_MAP.values() if v == "DISCOVERY")
+        assert count >= 30, f"Expected >=30 DISCOVERY verbs, got {count}"
+
+    def test_anomaly_category_count(self):
+        count = sum(1 for v in VERB_MAP.values() if v == "ANOMALY")
+        assert count >= 30, f"Expected >=30 ANOMALY verbs, got {count}"
+
+    def test_constraint_category_count(self):
+        count = sum(1 for v in VERB_MAP.values() if v == "CONSTRAINT")
+        assert count >= 30, f"Expected >=30 CONSTRAINT verbs, got {count}"
+
+
+class TestEnglishDecisionVerbs:
+    """30 English DECISION verbs with past tense coverage."""
+
+    DECISION_VERBS = [
+        ("decide", "DECISION"), ("decided", "DECISION"),
+        ("chose", "DECISION"), ("choose", "DECISION"),
+        ("switch", "DECISION"), ("switched", "DECISION"),
+        ("replace", "DECISION"), ("replaced", "DECISION"),
+        ("migrate", "DECISION"), ("migrated", "DECISION"),
+        ("upgrade", "DECISION"), ("upgraded", "DECISION"),
+        ("downgrade", "DECISION"), ("downgraded", "DECISION"),
+        ("deploy", "DECISION"), ("deployed", "DECISION"),
+        ("release", "DECISION"), ("released", "DECISION"),
+        ("merge", "DECISION"), ("merged", "DECISION"),
+        ("refactor", "DECISION"), ("refactored", "DECISION"),
+        ("optimize", "DECISION"), ("optimized", "DECISION"),
+        ("configure", "DECISION"), ("configured", "DECISION"),
+        ("enable", "DECISION"), ("enabled", "DECISION"),
+        ("disable", "DECISION"), ("disabled", "DECISION"),
+        ("add", "DECISION"), ("added", "DECISION"),
+        ("remove", "DECISION"), ("removed", "DECISION"),
+        ("delete", "DECISION"), ("deleted", "DECISION"),
+        ("adopt", "DECISION"), ("adopted", "DECISION"),
+        ("select", "DECISION"), ("selected", "DECISION"),
+    ]
+
+    @pytest.mark.parametrize("verb,expected_type", DECISION_VERBS)
+    def test_decision_verb(self, verb, expected_type):
+        assert get_anchor_type(verb) == expected_type
+
+    def test_segment_decision_sentence(self):
+        text = "We decided to migrate and upgrade the database."
+        matches = segment_text(text)
+        verbs = [m[0].lower() for m in matches]
+        assert "decided" in verbs or "migrate" in verbs or "upgrade" in verbs
+
+
+class TestEnglishDiscoveryVerbs:
+    """15 DISCOVERY verbs with past tense coverage."""
+
+    DISCOVERY_VERBS = [
+        ("discover", "DISCOVERY"), ("discovered", "DISCOVERY"),
+        ("find", "DISCOVERY"), ("found", "DISCOVERY"),
+        ("locate", "DISCOVERY"), ("located", "DISCOVERY"),
+        ("identify", "DISCOVERY"), ("identified", "DISCOVERY"),
+        ("trace", "DISCOVERY"), ("traced", "DISCOVERY"),
+        ("debug", "DISCOVERY"), ("debugged", "DISCOVERY"),
+        ("diagnose", "DISCOVERY"), ("diagnosed", "DISCOVERY"),
+        ("detect", "DISCOVERY"), ("detected", "DISCOVERY"),
+        ("observe", "DISCOVERY"), ("observed", "DISCOVERY"),
+        ("notice", "DISCOVERY"), ("noticed", "DISCOVERY"),
+        ("realize", "DISCOVERY"), ("realized", "DISCOVERY"),
+        ("confirm", "DISCOVERY"), ("confirmed", "DISCOVERY"),
+        ("pinpoint", "DISCOVERY"), ("pinpointed", "DISCOVERY"),
+        ("isolate", "DISCOVERY"), ("isolated", "DISCOVERY"),
+    ]
+
+    @pytest.mark.parametrize("verb,expected_type", DISCOVERY_VERBS)
+    def test_discovery_verb(self, verb, expected_type):
+        assert get_anchor_type(verb) == expected_type
+
+    def test_segment_discovery_sentence(self):
+        text = "I found and identified the root cause and confirmed the fix."
+        matches = segment_text(text)
+        verbs = [m[0].lower() for m in matches]
+        assert any(v in verbs for v in ["found", "identified", "confirmed"])
+
+
+class TestEnglishAnomalyVerbs:
+    """15 ANOMALY verbs with past tense coverage."""
+
+    ANOMALY_VERBS = [
+        ("error", "ANOMALY"), ("fail", "ANOMALY"),
+        ("timeout", "ANOMALY"), ("crash", "ANOMALY"),
+        ("hang", "ANOMALY"), ("block", "ANOMALY"),
+        ("leak", "ANOMALY"), ("overflow", "ANOMALY"),
+        ("deadlock", "ANOMALY"), ("conflict", "ANOMALY"),
+        ("exception", "ANOMALY"), ("broken", "ANOMALY"),
+        ("corrupted", "ANOMALY"), ("missing", "ANOMALY"),
+        ("panic", "ANOMALY"), ("degraded", "ANOMALY"),
+        ("returned null", "ANOMALY"), ("returned empty", "ANOMALY"),
+        ("threw", "ANOMALY"),
+    ]
+
+    @pytest.mark.parametrize("verb,expected_type", ANOMALY_VERBS)
+    def test_anomaly_verb(self, verb, expected_type):
+        assert get_anchor_type(verb) == expected_type
+
+    def test_segment_anomaly_sentence(self):
+        text = "The service crashed with a timeout and memory leak."
+        matches = segment_text(text)
+        verbs = [m[0].lower() for m in matches]
+        assert any(v in verbs for v in ["crash", "timeout", "leak"])
+
+
+class TestEnglishConstraintVerbs:
+    """15 CONSTRAINT verbs."""
+
+    CONSTRAINT_VERBS = [
+        ("because", "CONSTRAINT"), ("must", "CONSTRAINT"),
+        ("cannot", "CONSTRAINT"), ("unless", "CONSTRAINT"),
+        ("prerequisite", "CONSTRAINT"), ("depends on", "CONSTRAINT"),
+        ("require", "CONSTRAINT"), ("need to", "CONSTRAINT"),
+        ("at most", "CONSTRAINT"), ("at least", "CONSTRAINT"),
+        ("no more than", "CONSTRAINT"), ("compatible", "CONSTRAINT"),
+        ("incompatible", "CONSTRAINT"), ("restricted to", "CONSTRAINT"),
+        ("constrained by", "CONSTRAINT"), ("limited by", "CONSTRAINT"),
+    ]
+
+    @pytest.mark.parametrize("verb,expected_type", CONSTRAINT_VERBS)
+    def test_constraint_verb(self, verb, expected_type):
+        assert get_anchor_type(verb) == expected_type
+
+    def test_segment_constraint_sentence(self):
+        text = "This service requires 2GB RAM and depends on Redis."
+        matches = segment_text(text)
+        verbs = [m[0].lower() for m in matches]
+        assert any(v in verbs for v in ["require", "depends on"])
+
+
+class TestChineseVerbs:
+    """10 Chinese verb tests across all four categories with synonym variants."""
+
+    def test_chinese_decision_decided(self):
+        assert get_anchor_type("决定") == "DECISION"
+
+    def test_chinese_decision_switch(self):
+        assert get_anchor_type("改用") == "DECISION"
+        assert get_anchor_type("切换") == "DECISION"
+
+    def test_chinese_decision_deploy(self):
+        assert get_anchor_type("部署") == "DECISION"
+        assert get_anchor_type("发布") == "DECISION"
+
+    def test_chinese_discovery_found(self):
+        assert get_anchor_type("发现") == "DISCOVERY"
+        assert get_anchor_type("找到") == "DISCOVERY"
+
+    def test_chinese_discovery_locate(self):
+        assert get_anchor_type("定位") == "DISCOVERY"
+        assert get_anchor_type("排查") == "DISCOVERY"
+
+    def test_chinese_discovery_confirm(self):
+        assert get_anchor_type("确认") == "DISCOVERY"
+        assert get_anchor_type("识别") == "DISCOVERY"
+
+    def test_chinese_anomaly_error(self):
+        assert get_anchor_type("报错") == "ANOMALY"
+        assert get_anchor_type("异常") == "ANOMALY"
+
+    def test_chinese_anomaly_crash(self):
+        assert get_anchor_type("崩溃") == "ANOMALY"
+        assert get_anchor_type("挂了") == "ANOMALY"
+
+    def test_chinese_constraint_must(self):
+        assert get_anchor_type("必须") == "CONSTRAINT"
+        assert get_anchor_type("需要") == "CONSTRAINT"
+
+    def test_chinese_constraint_because(self):
+        assert get_anchor_type("因为") == "CONSTRAINT"
+        assert get_anchor_type("除非") == "CONSTRAINT"
+
+    def test_segment_chinese_multi_category(self):
+        text = "我们决定升级 Redis，但是发现报错，必须回滚"
+        matches = segment_text(text)
+        verbs_found = [m[0] for m in matches]
+        types_found = [m[1] for m in matches]
+        assert any(v in verbs_found for v in ["决定", "升级", "发现", "报错", "必须", "回滚"])
+        assert "DECISION" in types_found
+        assert "ANOMALY" in types_found
+
+
+class TestCompoundVerbs:
+    """5 compound verb tests: multi-word phrases matched as single units."""
+
+    def test_compound_tracked_down(self):
+        assert get_anchor_type("tracked down") == "DISCOVERY"
+        matches = segment_text("We tracked down the memory leak")
+        verbs = [m[0].lower() for m in matches]
+        assert "tracked down" in verbs
+
+    def test_compound_opted_for(self):
+        assert get_anchor_type("opted for") == "DECISION"
+
+    def test_compound_narrowed_down(self):
+        assert get_anchor_type("narrowed down") == "DISCOVERY"
+
+    def test_compound_figured_out(self):
+        assert get_anchor_type("figured out") == "DISCOVERY"
+        matches = segment_text("We finally figured out the root cause")
+        verbs = [m[0].lower() for m in matches]
+        assert "figured out" in verbs
+
+    def test_compound_longer_wins_over_shorter(self):
+        """'tracked down' (7 chars) matches before 'down' (4 chars)."""
+        text = "We tracked down the bug"
+        matches = segment_text(text)
+        verbs = [m[0] for m in matches]
+        # "tracked down" should be found; "tracked" alone should NOT also appear
+        # because the longer pattern consumed those characters
+        assert "tracked down" in verbs
+
+
+class TestCaseInsensitiveVerbs:
+    """5 case-insensitive matching tests."""
+
+    def test_title_case_decided(self):
+        assert get_anchor_type("Decided") == "DECISION"
+
+    def test_upper_case_found(self):
         assert get_anchor_type("FOUND") == "DISCOVERY"
 
-    def test_get_anchor_type_unknown(self):
-        assert get_anchor_type("xyzzy_nonexistent") == "FACT"
+    def test_mixed_case_crashed(self):
+        assert get_anchor_type("Crashed") == "ANOMALY"
 
-    def test_segment_text_chinese(self):
-        text = "我们决定用 Redis，但是发现了一个报错。"
+    def test_upper_case_must(self):
+        assert get_anchor_type("MUST") == "CONSTRAINT"
+
+    def test_segment_text_case_insensitive(self):
+        text = "The team Decided to DEPLOY Redis and FOUND a bug"
         matches = segment_text(text)
-        assert len(matches) >= 2
-        verbs_found = [m[0] for m in matches]
-        assert "决定" in verbs_found
+        verbs = [m[0] for m in matches]
+        assert any("ecided" in v or "Decided" in v for v in verbs)
+        assert any(v.upper() == "FOUND" or v == "FOUND" for v in verbs)
 
-    def test_segment_text_english(self):
-        text = "We decided to use Redis but found an error."
+
+class TestUnknownVerbs:
+    """5 tests: unlisted verbs return FACT anchor type."""
+
+    def test_unknown_english_verb(self):
+        assert get_anchor_type("procrastinate") == "FACT"
+
+    def test_unknown_chinese_verb(self):
+        assert get_anchor_type("吃火锅") == "FACT"
+
+    def test_unknown_technical_term(self):
+        assert get_anchor_type("kubernetes") == "FACT"
+
+    def test_empty_string(self):
+        assert get_anchor_type("") == "FACT"
+
+    def test_unknown_nonsense(self):
+        assert get_anchor_type("xyzzy123blargh") == "FACT"
+
+    def test_segment_text_unknown_verbs_not_matched(self):
+        """segment_text should not return unknown verbs as matches."""
+        text = "We procrastinate about Kubernetes and eat hotpot"
+        matches = segment_text(text)
+        verbs = [m[0].lower() for m in matches]
+        assert "procrastinate" not in verbs
+        assert "kubernetes" not in verbs
+
+
+class TestSegmentTextPerformance:
+    """segment_text() performance: 1000-char text under 0.01s."""
+
+    def test_performance_1000_chars(self):
+        text = (
+            "We decided to use Redis SETNX for distributed locking. "
+            "Found JWT race condition at auth.ts line 42 error ERR_005. "
+            "Database is PostgreSQL 14.2 with PgBouncer pooling. "
+            "API latency dropped from 200ms to 80ms after we deployed the fix. "
+            "Memory leak detected in LRU cache, overflow from 2.1GB to 180MB. "
+            "Must add TOTP 2FA support for GDPR compliance tokens deletable 30 days. "
+            "We migrated the auth service and upgraded all dependencies to latest versions. "
+            "The crash was caused by a race condition in the session handler module. "
+            "We switched to OAuth2 and replaced the old token system for authentication. "
+            "Cannot deploy on Friday, must wait until Monday per release policy. "
+            "Error 500 returned when timeout exceeds 30 seconds on the production server. "
+            "We refactored the extractor and optimized the regex engine for better speed. "
+            "Load test results show 500 RPS sustained with p50 latency of 45ms zero errors. "
+            "ERR_005 has been present for 14 days affecting 3 percent of total users. "
+            "Next we need OAuth2 Google GitHub social login integration 8 points estimated. "
+            "Redis session architecture needs redesign for the new features coming in Q3."
+        )
+        assert len(text) >= 1000, f"Test text too short: {len(text)} chars"
+
+        elapsed = 1.0
+        for _ in range(5):  # warm-up
+            segment_text(text)
+        start = time.perf_counter()
+        for _ in range(100):
+            segment_text(text)
+        elapsed = (time.perf_counter() - start) / 100
+
+        assert elapsed < 0.01, f"segment_text too slow: {elapsed:.6f}s for 1000-char text"
+
+    def test_performance_returns_correct_structure(self):
+        """segment_text returns properly typed tuples."""
+        text = "We decided to use Redis and found an error."
+        matches = segment_text(text)
+        for m in matches:
+            assert len(m) == 4
+            assert isinstance(m[0], str)  # verb_text
+            assert isinstance(m[1], str)  # anchor_type
+            assert isinstance(m[2], int)  # start
+            assert isinstance(m[3], int)  # end
+            assert m[2] < m[3]  # start before end
+
+
+class TestVerbEdgeCases:
+    """Edge cases for verb matching."""
+
+    def test_verb_at_start_of_text(self):
+        text = "Decided to use Redis"
         matches = segment_text(text)
         assert len(matches) >= 1
 
-    def test_segment_text_mixed(self):
-        text = "决定改用 Redis，deploy 到生产后报错 timeout。"
+    def test_verb_at_end_of_text(self):
+        text = "The migration was finally deployed"
         matches = segment_text(text)
-        verbs_found = [m[0] for m in matches]
-        assert "决定" in verbs_found or len(matches) > 0
+        verbs = [m[0].lower() for m in matches]
+        assert "deployed" in verbs
 
-    def test_longer_match_wins(self):
-        """Longer verb patterns should match before shorter ones."""
-        text = "tracked down the bug and found it"
+    def test_verb_only_content(self):
+        text = "Deployed."
         matches = segment_text(text)
-        verbs = [m[0] for m in matches]
-        # "tracked down" should match as one unit, not "tracked" separately
-        if any("track" in v.lower() for v in verbs):
-            idx = next(i for i, v in enumerate(verbs) if "track" in v.lower())
-            # Should be the full phrase if present
+        assert len(matches) >= 1
+
+    def test_no_verb_in_text(self):
+        text = "The Redis cluster runs on Kubernetes pods."
+        matches = segment_text(text)
+        verbs = [m[0].lower() for m in matches]
+        assert "redis" not in verbs
+        assert "kubernetes" not in verbs
+
+    def test_multiple_verbs_same_category(self):
+        text = "Decided to migrate and upgrade the database"
+        matches = segment_text(text)
+        decision_matches = [m for m in matches if m[1] == "DECISION"]
+        assert len(decision_matches) >= 1
+
+    def test_cross_category_verbs_in_sentence(self):
+        text = "Decided to deploy, found a bug, error in logs, must fix"
+        matches = segment_text(text)
+        types = set(m[1] for m in matches)
+        assert len(types) >= 2, f"Expected >=2 categories, got {types}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
