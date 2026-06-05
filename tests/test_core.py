@@ -3915,3 +3915,61 @@ class TestHookErrorHandling:
                 "Large input should save anchor files"
         finally:
             shutil.rmtree(home, ignore_errors=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Code Block Handling Tests (US-016)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestCodeBlockStripping:
+    """Verify code blocks are replaced with summaries, not anchor-extracted."""
+
+    def test_python_code_block_replaced(self):
+        text = "We added a function:\n```python\ndef foo():\n    return 1\n```\nThis caused a bug."
+        from anchor.extractor import _strip_code_blocks
+        cleaned, refs = _strip_code_blocks(text)
+        assert "def foo" not in cleaned, "Code should be stripped"
+        assert "Code block: python" in cleaned, "Summary placeholder missing"
+        assert "return 1" not in cleaned, "Code body should be removed"
+        assert len(refs) > 0
+
+    def test_sql_code_block_summarized(self):
+        text = "```sql\nALTER TABLE users ADD COLUMN email TEXT;\n```"
+        from anchor.extractor import _strip_code_blocks
+        cleaned, refs = _strip_code_blocks(text)
+        assert "ALTER TABLE" not in cleaned
+        assert "Code block: sql" in cleaned
+        assert refs[0]["n_lines"] == 1
+
+    def test_multiple_code_blocks(self):
+        text = "```python\ndef a():\n    pass\n```\nText.\n```js\nconst x = 1;\n```"
+        from anchor.extractor import _strip_code_blocks
+        cleaned, refs = _strip_code_blocks(text)
+        assert len(refs) == 2
+        assert "def a" not in cleaned
+        assert "const x" not in cleaned
+        assert "Code block: python" in cleaned
+        assert "Code block: js" in cleaned
+
+    def test_no_code_blocks(self):
+        text = "Just some normal text about Redis and PostgreSQL."
+        from anchor.extractor import _strip_code_blocks
+        cleaned, refs = _strip_code_blocks(text)
+        assert cleaned == text
+        assert len(refs) == 0
+
+    def test_extract_graph_skips_code(self):
+        """Anchors from extract_graph should not include code entities."""
+        msgs = [
+            {"content": "We decided to use Redis for caching."},
+            {"content": "```python\ndef acquire_lock():\n    return redis_client.set('key', 'val', nx=True)\n```"},
+            {"content": "Bug found at auth.ts:42. Error ERR_005."},
+        ]
+        from anchor.extractor import extract_graph
+        g = extract_graph(msgs)
+        all_entities = " ".join(v.entity for v in g.verb_anchors)
+        all_entities += " " + " ".join(n.entity for n in g.noun_anchors)
+        # Code body is stripped, but function names in summaries are preserved
+        # as useful metadata (tells you what code was written)
+        assert "redis_client.set" not in all_entities, "Code body leaked into anchors"
+        assert "Redis" in all_entities or "auth.ts" in all_entities

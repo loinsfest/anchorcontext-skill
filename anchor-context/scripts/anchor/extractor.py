@@ -12,8 +12,60 @@ import re
 import uuid
 from typing import Optional
 
+import re as _re
+
 from .models import (Anchor, AnchorType, EntityClass, AnchorSequence, ENTITY_WEIGHT,
                       VerbAnchor, NounAnchor, AnchorGraph)
+
+# ── Code block handling ───────────────────────────────────────────────
+# Code blocks are NOT anchor-extracted. They're replaced with a summary
+# placeholder. Code can be re-read from disk when needed (Claude Code approach).
+
+_CODE_BLOCK_RE = _re.compile(r'```(\w*)\n([\s\S]*?)```', _re.MULTILINE)
+
+
+def _summarize_code_block(language: str, code: str) -> str:
+    """Replace a code block with a summary placeholder."""
+    lines = code.strip().split('\n')
+    n_lines = len(lines)
+    lang_label = language or 'code'
+
+    # Extract key identifiers: function/class names, imports
+    sigs = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('def '):
+            sigs.append(stripped[4:].split('(')[0].strip())
+        elif stripped.startswith('class '):
+            sigs.append(stripped[6:].split(':')[0].split('(')[0].strip())
+        elif stripped.startswith('import ') or stripped.startswith('from '):
+            sigs.append(stripped.rstrip(';'))
+
+    sig_str = f": {', '.join(sigs[:5])}" if sigs else ""
+    return f"[Code block: {lang_label}{sig_str}, {n_lines} lines]"
+
+
+def _strip_code_blocks(text: str) -> tuple[str, list[dict]]:
+    """Replace code blocks with summary placeholders.
+
+    Returns (cleaned_text, code_refs) where code_refs are stored
+    for potential file re-reading on demand.
+    """
+    code_refs = []
+
+    def _replace(m):
+        language = m.group(1) or ''
+        code = m.group(2)
+        ref = {
+            'language': language,
+            'n_lines': len(code.strip().split('\n')),
+            'summary': _summarize_code_block(language, code),
+        }
+        code_refs.append(ref)
+        return ref['summary']
+
+    cleaned = _CODE_BLOCK_RE.sub(_replace, text)
+    return cleaned, code_refs
 from .verbs import segment_text, find_verbs_in_window, get_anchor_type
 
 # ── Entity recognition patterns ──────────────────────────────────────────
@@ -351,10 +403,14 @@ def extract_graph(messages: list[dict], session_id: Optional[str] = None) -> Anc
 
     full_text = ""
     offset = 0
+    all_code_refs = []
     for msg in messages:
         content = msg.get("content", "")
         if "tool_result" in msg:
             content += "\n" + str(msg["tool_result"])
+        # Strip code blocks — replace with summary, keep refs for file re-reading
+        content, code_refs = _strip_code_blocks(content)
+        all_code_refs.extend(code_refs)
         full_text += content + "\n"
         offset += len(content) + 1
 
