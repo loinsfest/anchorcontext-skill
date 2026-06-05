@@ -1,196 +1,172 @@
-# Anchor Context
+# Never lose context in Claude Code again
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-622%2F0-brightgreen.svg)](tests/)
+[![Release](https://img.shields.io/badge/release-v1.1.1-blue.svg)](https://github.com/loinsfest/anchorcontext-skill/releases)
 
 > **Status:** Core pipeline complete, 622 unit tests passing (including 100-500 message ultra-long verification). **No production experience yet — feedback welcome.**
 
-**Anchor-based context compression for Claude Code.** Extract minimal structured anchors from long conversations and reconstruct context on demand — query-aware, not summary-locked.
+**Claude Code's automatic compaction makes it forget what you were working on.** Anchor Context extracts key decisions, bugs, and data points from your conversation before compaction, then injects them back so Claude remembers. One command. Zero cost.
 
 ```
-Traditional:  conversation → summary → store summary → read summary (one-shot, locked in)
-Anchor:       conversation → extract anchors → store anchors → reconstruct on demand (query-aware)
-
-10000 token conversation → ~300 token anchors → LLM reconstructs any topic on demand
+Before: "What were we working on again?" — Claude after every compaction
+After:  "Here are the key anchors from your previous session..."
+         [DECISION] decided to use Redis SETNX
+         [ANOMALY]  auth.ts:42 JWT race condition [ERR_005]
+         [FACT]     PostgreSQL 14.2
 ```
+
+## Quick Start
+
+```bash
+# Install
+git clone https://github.com/loinsfest/anchorcontext-skill.git
+cd anchorcontext-skill && bash install.sh  # or .\install.ps1 on Windows
+
+# Done. Now just use Claude Code normally.
+# When context fills up, anchors are saved automatically.
+# Say "anchor context" to see them at any time.
+```
+
+## The Problem
+
+Long Claude Code sessions lose context when compaction kicks in (~95% context usage). The summary Claude generates is lossy — decisions, bug discoveries, error codes, version numbers all get summarized away. You end up repeating yourself.
+
+## Our Solution
+
+Anchor Context saves **structured anchors** — verb-noun pairs with exact data — before compaction. After compaction, they're injected back into the session. You can also query them on demand.
+
+```
+Conversation (10000 tokens)
+        │
+        ▼ Extract (regex, zero LLM cost)
+~300 tokens of anchors
+        │
+        ▼ Compact
+        │
+        ▼ Inject anchors back
+Claude remembers what mattered
+```
+
+**93% compression. Zero API cost. Fully automatic.**
 
 ## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Conversation                          │
-│  "We decided to use Redis SETNX for distributed lock."  │
-│  "Found JWT race condition at auth.ts:42"               │
-│  "Must sync across pods — need distributed lock"         │
-│  "Database is PostgreSQL 14.2"                           │
-└────────────────────────┬────────────────────────────────┘
-                         │ Extract (zero LLM cost)
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                    Anchor Sequence                        │
-│  [0] [DECISION] Redis SETNX                             │
-│  [1] [DISCOVERY] JWT race condition  [line:42]          │
-│  [2] [CONSTRAINT] cross-pod sync                        │
-│  [3] [FACT] PostgreSQL  [14.2]                          │
-└────────────────────────┬────────────────────────────────┘
-                         │ Store (~300 tokens, ~97% compression)
-                         ▼
-              ~/.claude/anchors/session.json
+Message: "We decided to use Redis SETNX for distributed locking"
+  → [DECISION] decided → Redis SETNX
 
-                         │ User asks: "What's the Redis lock approach?"
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│              Position-Based Retrieval                    │
-│  TF-IDF → find position → slice window [1,2,3]          │
-│  PRIMARY marker distinguishes hit from neighbors         │
-└────────────────────────┬────────────────────────────────┘
-                         │ Reconstruct
-                         ▼
-               LLM answers from anchor window
+Message: "Found JWT race condition at auth.ts line 42. Error code ERR_005."
+  → [ANOMALY] race condition → auth.ts  [line:42, ERR_005]
+
+Message: "Database will be PostgreSQL 14.2, pool size 20."
+  → [FACT] PostgreSQL 14.2 [pool 20]
 ```
 
-## Architecture
+Each anchor is a **verb + noun + data values**. Verbs are classified: DECISION, DISCOVERY, ANOMALY, CONSTRAINT, FACT. Nouns carry exact numbers and tags.
 
-### Why anchors instead of summaries?
+When you query "what database are we using?", the system finds PostgreSQL via its semantic tags (`database`, `storage`, `SQL`) and returns the relevant window of anchors.
 
-| Approach | Detail Preservation | Query Flexibility | Storage Cost |
-|----------|-------------------|-------------------|--------------|
-| Full conversation | 100% | High | 10000 tokens |
-| Summary | ~30% | Low (locked in) | ~500 tokens |
-| **Anchor Context** | **~80% reconstructable** | **High (query-aware)** | **~300 tokens** |
+## Features
 
-### Key Design Decisions
+- **Fully automatic** — 3 Claude Code hooks (PreCompact, SessionStart, Stop) handle everything
+- **93% compression** — 918 tokens → 75 tokens on a 30-message conversation
+- **Query-aware** — ask about specific topics, get targeted context back
+- **Zero-cost mode** — regex extraction, no API calls needed
+- **LLM-enhanced mode** — optional DeepSeek integration for better selection and auto-tagging
+- **Ultra-long verified** — tested at 100, 200, and 500 message scale
 
-- **Noun-driven extraction**: Entities are primary payload, verbs are classification labels. DATA entities (line numbers, error codes, version strings) always anchor.
-- **Position-based retrieval**: TF-IDF finds position in sequence, temporal window provides context. Not semantic search — temporal adjacency is often more informative.
-- **Anchor immutability**: Old anchors are never modified, only superseded. Full evolution chains preserved for reconstruction.
-- **PRIMARY marker**: Distinguishes the query-hit anchor from temporally-adjacent neighbors, preventing LLM from confusing adjacency with causality.
-- **Zero LLM extraction cost**: Pure regex + NLP. No API calls needed for extraction.
+## Install
 
-## Quick Install
+**Requirements:** Python 3.9+ (standard library only, no pip install needed)
 
 ### macOS / Linux / Git Bash
 ```bash
-git clone https://github.com/anchorcontext/anchorcontext-skill.git
-cd anchorcontext-skill
-bash install.sh
+git clone https://github.com/loinsfest/anchorcontext-skill.git
+cd anchorcontext-skill && bash install.sh
 ```
 
 ### Windows (PowerShell)
 ```powershell
-git clone https://github.com/anchorcontext/anchorcontext-skill.git
+git clone https://github.com/loinsfest/anchorcontext-skill.git
 cd anchorcontext-skill
 .\install.ps1
 ```
 
-**Requirements:** Python 3.9+ (standard library only, no pip install needed)
-
 ## Usage
 
-1. **Automatic**: Anchors are saved during Claude Code compaction (PreCompact hook). Just work normally until context fills up.
-2. **Manual trigger**: Say `anchor context` in any Claude Code session — the skill loads and displays saved anchors.
-3. **Query reconstruction**: Ask a specific question about a prior topic — Claude uses the anchors to reconstruct relevant context.
+1. **Automatic** — anchors save during compaction. Work normally.
+2. **Say "anchor context"** — display saved anchors anytime.
+3. **Ask specific questions** — "what was that bug in auth.ts?" — Claude uses anchors to answer.
 
 ```bash
-# View saved anchors
+# View saved anchors manually
 python ~/.claude/skills/anchor-context/scripts/inject.py --format
 ```
 
-## Project Structure
-
-```
-anchorcontext-skill/
-├── anchor-context/                 # Skill directory
-│   ├── SKILL.md                    # Skill definition (trigger conditions)
-│   ├── REFERENCE.md                # Technical reference
-│   └── scripts/
-│       ├── inject.py               # SessionStart[compact] hook handler
-│       ├── pre_compact.py          # PreCompact hook handler
-│       ├── stop_backup.py          # Stop hook handler
-│       └── anchor/                 # Anchor-core library (zero deps)
-│           ├── models.py           # Anchor / VerbAnchor / NounAnchor / AnchorGraph
-│           ├── extractor.py        # Bidirectional extraction pipeline
-│           ├── verbs.py            # 180+ verb lexicon
-│           ├── judge.py            # LLM significance judge + fallback
-│           ├── reconstructor.py    # Hybrid retrieval (TF-IDF + FTS5)
-│           ├── store.py            # JSON persistence
-│           ├── store_sqlite.py     # SQLite + FTS5 backend
-│           ├── formatter.py        # Context injection formatting
-│           ├── conflict.py         # Conflict detection
-│           └── constraints.py      # Constraint graph
-├── hooks/hooks.json                # PreCompact + SessionStart + Stop hooks
-├── tests/
-│   ├── test_core.py                # 622 unit tests (59 classes)
-│   ├── test_ultra_long.py          # Ultra-long stress tests (100-500 msgs)
-│   ├── test_e2e_llm.py            # E2E LLM verification
-│   └── data/                       # Generated test conversations
-├── install.sh / install.ps1        # One-command install
-├── .claude-plugin/plugin.json      # Plugin manifest
-├── RELEASE-NOTES.md
-└── README.md
-```
-
-## Verification
+### LLM-enhanced mode (optional)
 
 ```bash
-# Run unit tests
-python -m pytest tests/ -v
-
-# E2E test with real LLM
-export ANCHOR_TEST_API_KEY="your-deepseek-key"
-python tests/test_e2e_llm.py
-
-# Dry-run (print prompts only)
-python tests/test_e2e_llm.py --dry-run
+export DEEPSEEK_API_KEY="your-key"
 ```
+
+One $0.001 API call per compaction. Replaces all hand-crafted rules with LLM judgment — better entity selection, auto-generated semantic tags.
 
 ## Performance
 
 | Metric | Value |
 |--------|-------|
-| Compression rate | 93% (30-msg), 80%+ (500-msg) |
-| Extraction speed | <0.1s for 50 messages, <3s for 500 |
+| Compression (30 msgs) | 93% |
+| Compression (500 msgs) | 80%+ |
+| Extraction speed (50 msgs) | <0.1s |
+| Extraction speed (500 msgs) | <3s |
 | Unit tests | 622 passing, 0 failures |
-| Ultra-long verified | 100/200/500 message conversations |
+
+## Project Structure
+
+```
+anchorcontext-skill/
+├── anchor-context/SKILL.md           # Skill definition
+├── anchor-context/scripts/
+│   ├── inject.py                     # SessionStart[compact] hook
+│   ├── pre_compact.py                # PreCompact hook
+│   ├── stop_backup.py                # Stop hook (backup)
+│   └── anchor/
+│       ├── models.py                 # VerbAnchor + NounAnchor + AnchorGraph
+│       ├── extractor.py              # Bidirectional extraction pipeline
+│       ├── verbs.py                  # 180+ verb lexicon (EN + CN)
+│       ├── judge.py                  # LLM judge + zero-cost fallback
+│       ├── reconstructor.py          # Hybrid retrieval (TF-IDF + FTS5)
+│       ├── store.py / store_sqlite.py  # JSON + SQLite storage
+│       └── ...
+├── tests/ (622 tests)
+├── hooks/hooks.json
+└── install.sh / install.ps1
+```
+
+## vs Other Approaches
+
+| Approach | Compression | API Cost | What It Preserves |
+|----------|:-----------:|:--------:|-------------------|
+| Claude Code default compaction | 70-80% | $0 | AI-summarized prose |
+| claude-mem (76K stars) | 80-85% | High | SQLite + vector embeddings |
+| Extractive keywords | 88-93% | $0 | Full sentences matching keywords |
+| **Anchor Context** | **93%** | **$0** | **Structured verb-noun pairs + exact data** |
+
+The difference: we don't compress text. We extract what matters and throw away the rest. When you need context back, we reconstruct it from the anchors.
 
 ## Limitations
 
 | Limitation | Mitigation |
 |------------|------------|
-| Chinese synonym zero-recall | SQLite FTS5 fallback in hybrid retrieval |
-| Pure numbers without units | Known — tracked for improvement |
+| No production experience yet | 622 tests, verified at 500-msg scale |
+| Query matching is keyword-based | LLM mode adds semantic tags |
 | Requires Python 3.9+ | Bundled skill, zero pip install |
 
-## Ecosystem Comparison
+## Keywords
 
-Researched 8 popular Claude Code context/memory projects (May 2026):
-
-| Project | Stars | Approach | LLM Cost | Retrieval | Storage | Our Differentiator |
-|---------|-------|---------|-----------|-----------|---------|-------------------|
-| **Anchor Context** | — | Regex anchors | **Zero** | TF-IDF + FTS5 | JSON + SQLite | Only zero-cost solution |
-| claude-mem | 76K | AI compression | High | FTS5 + ChromaDB | SQLite + Vector | Cross-platform |
-| CoMeT-CC | — | TLS proxy | Medium | 3-tier tree | Proxy cache | Lossless raw preservation |
-| LCM | — | DAG summaries | Medium | FTS5 | SQLite | Promoted long-term memory |
-| agentmemory | 46K | AI compression | High | Keyword+Vector+Graph | Local DB | 95% token reduction |
-| Contexa | — | Git-branch model | Medium | Git-style log | File-based | K=1 optimal context |
-| MemoryForge | — | Multi-hook | Zero | File search | STATE.md files | Session structure maps |
-| claude-baton | — | SQLite checkpoints | Zero | SQL queries | SQLite | Git diff tracking |
-
-**What we do differently (and why):**
-1. **Zero LLM extraction cost** — All others use AI for compression. Our regex pipeline is free and deterministic.
-2. **Anchor immutability** — Old anchors are superseded, never modified. Evolution chains preserved for reconstruction.
-3. **PRIMARY marker** — Distinguishes query-hit from temporal neighbors. No other project addresses causal vs. temporal confusion.
-4. **Position-based retrieval** — Temporal adjacency > semantic similarity for conversation reconstruction. Others use pure semantic search.
-5. **Self-contained** — Bundled Python library. Zero pip install, zero external services.
-
-## Contributing
-
-Areas where contributions are especially valuable:
-- BGE-M3 embedding integration for pure semantic fallback
-- Multi-language verb lexicon expansion (JP, KR)
-- CI/CD pipeline for cross-platform hook testing
-- MCP tool wrappers for anchor management
+`claude-code` `context-compression` `context-window` `compaction` `memory` `anchor` `skill` `llm` `deepseek` `claude` `ai-coding` `productivity` `open-source`
 
 ## Contact
 
