@@ -3,7 +3,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-622%2F0-brightgreen.svg)](tests/)
-[![Release](https://img.shields.io/badge/release-v1.2.0-blue.svg)](https://github.com/loinsfest/anchorcontext-skill/releases)
+[![Release](https://img.shields.io/badge/release-v1.3.1-blue.svg)](https://github.com/loinsfest/anchorcontext-skill/releases)
 
 > **Status:** Core pipeline complete, 622 unit tests passing (including 100-500 message ultra-long verification). **No production experience yet — feedback welcome.**
 
