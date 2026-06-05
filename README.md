@@ -1,18 +1,18 @@
-# Anchor Context — 锚点上下文
+# Anchor Context
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-50%2F50-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-622%2F0-brightgreen.svg)](tests/)
 
-> **Status:** 核心管道已完成，622 单元测试通过（含 100-500 条消息超长文本验证）。**尚无生产环境实战经验，欢迎测试反馈。**
+> **Status:** Core pipeline complete, 622 unit tests passing (including 100-500 message ultra-long verification). **No production experience yet — feedback welcome.**
 
-**Anchor-based context compression for Claude Code.** Extract minimal structured anchors from long conversations (~97% compression) and reconstruct context on demand — query-aware, not summary-locked.
+**Anchor-based context compression for Claude Code.** Extract minimal structured anchors from long conversations and reconstruct context on demand — query-aware, not summary-locked.
 
 ```
-传统压缩：对话 → 摘要 → 存摘要 → 读摘要（一次性锁定，what you see is what you get）
-锚点压缩：对话 → 提取锚点 → 存锚点 → 按需重建上下文（query-aware, on-demand）
+Traditional:  conversation → summary → store summary → read summary (one-shot, locked in)
+Anchor:       conversation → extract anchors → store anchors → reconstruct on demand (query-aware)
 
-10000 token 对话 → ~300 token 锚点 → LLM 按需重建任意话题
+10000 token conversation → ~300 token anchors → LLM reconstructs any topic on demand
 ```
 
 ## How It Works
@@ -38,7 +38,7 @@
                          ▼
               ~/.claude/anchors/session.json
 
-                         │ User asks: "Redis 锁的方案?"
+                         │ User asks: "What's the Redis lock approach?"
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │              Position-Based Retrieval                    │
@@ -89,7 +89,7 @@ cd anchorcontext-skill
 ## Usage
 
 1. **Automatic**: Anchors are saved during Claude Code compaction (PreCompact hook). Just work normally until context fills up.
-2. **Manual trigger**: Say `锚点上下文` or `anchor context` in any Claude Code session — the skill loads and displays saved anchors.
+2. **Manual trigger**: Say `anchor context` in any Claude Code session — the skill loads and displays saved anchors.
 3. **Query reconstruction**: Ask a specific question about a prior topic — Claude uses the anchors to reconstruct relevant context.
 
 ```bash
@@ -105,23 +105,29 @@ anchorcontext-skill/
 │   ├── SKILL.md                    # Skill definition (trigger conditions)
 │   ├── REFERENCE.md                # Technical reference
 │   └── scripts/
-│       ├── inject.py               # SessionStart hook handler
+│       ├── inject.py               # SessionStart[compact] hook handler
 │       ├── pre_compact.py          # PreCompact hook handler
+│       ├── stop_backup.py          # Stop hook handler
 │       └── anchor/                 # Anchor-core library (zero deps)
-│           ├── models.py           # Anchor + AnchorSequence
-│           ├── extractor.py        # Extraction pipeline
-│           ├── verbs.py            # 150+ verb lexicon
-│           ├── reconstructor.py    # Position-based retrieval
+│           ├── models.py           # Anchor / VerbAnchor / NounAnchor / AnchorGraph
+│           ├── extractor.py        # Bidirectional extraction pipeline
+│           ├── verbs.py            # 180+ verb lexicon
+│           ├── judge.py            # LLM significance judge + fallback
+│           ├── reconstructor.py    # Hybrid retrieval (TF-IDF + FTS5)
 │           ├── store.py            # JSON persistence
-│           ├── formatter.py        # Context formatting
+│           ├── store_sqlite.py     # SQLite + FTS5 backend
+│           ├── formatter.py        # Context injection formatting
 │           ├── conflict.py         # Conflict detection
 │           └── constraints.py      # Constraint graph
-├── hooks/hooks.json                # PreCompact + SessionStart hooks
+├── hooks/hooks.json                # PreCompact + SessionStart + Stop hooks
 ├── tests/
-│   ├── test_core.py                # 39 unit tests
-│   └── test_e2e_llm.py            # E2E LLM verification
+│   ├── test_core.py                # 622 unit tests (59 classes)
+│   ├── test_ultra_long.py          # Ultra-long stress tests (100-500 msgs)
+│   ├── test_e2e_llm.py            # E2E LLM verification
+│   └── data/                       # Generated test conversations
 ├── install.sh / install.ps1        # One-command install
 ├── .claude-plugin/plugin.json      # Plugin manifest
+├── RELEASE-NOTES.md
 └── README.md
 ```
 
@@ -143,10 +149,10 @@ python tests/test_e2e_llm.py --dry-run
 
 | Metric | Value |
 |--------|-------|
-| Compression rate | ~97% (10000 → ~300 tokens) |
-| Extraction speed | 0.005s for 50-message conversation |
-| E2E reconstruction score | 8/10 (DeepSeek-chat) |
-| Unit tests | 47/47 passing |
+| Compression rate | 93% (30-msg), 80%+ (500-msg) |
+| Extraction speed | <0.1s for 50 messages, <3s for 500 |
+| Unit tests | 622 passing, 0 failures |
+| Ultra-long verified | 100/200/500 message conversations |
 
 ## Limitations
 
