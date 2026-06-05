@@ -132,24 +132,76 @@ def _output_compact_instructions(sequence: AnchorSequence):
 def _extract_messages(data: dict) -> list[dict]:
     """Extract message list from PreCompact hook input data.
 
-    Handles multiple possible formats since hook data structure
-    varies between Claude Code versions.
+    Claude Code PreCompact hook stdin has NO messages field — it provides
+    transcript_path pointing to a .jsonl file. Messages must be read from there.
+
+    Also handles the legacy format (direct messages in stdin) for testing.
     """
-    # Direct messages field
+    # Legacy: direct messages field (used by unit tests and manual invocation)
     if "messages" in data and isinstance(data["messages"], list):
         return data["messages"]
 
-    # Nested in conversation
+    # Legacy: nested in conversation
     if "conversation" in data:
         conv = data["conversation"]
         if isinstance(conv, dict) and "messages" in conv:
             return conv["messages"]
 
-    # System prompt messages
-    if "system_messages" in data:
-        return data["system_messages"]
+    # Production: read transcript_path from PreCompact hook
+    transcript_path = data.get("transcript_path", "")
+    if transcript_path and os.path.isfile(transcript_path):
+        return _read_transcript(transcript_path)
 
     return []
+
+
+def _read_transcript(transcript_path: str) -> list[dict]:
+    """Read messages from a Claude Code .jsonl transcript file.
+
+    Each line is a JSON object with: role, content (string or content block array).
+    Extracts only text content for anchor extraction — skips tool_use, tool_result.
+    """
+    messages = []
+    try:
+        with open(transcript_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                content = obj.get("content", "")
+                text = _extract_text_content(content)
+                if text.strip():
+                    messages.append({"content": text})
+    except (OSError, IOError) as e:
+        print(f"[anchor-context] Warning: cannot read transcript: {e}",
+              file=sys.stderr)
+
+    return messages
+
+
+def _extract_text_content(content) -> str:
+    """Extract plain text from a message's content field.
+
+    Handles both:
+      - Plain string: "hello world"
+      - Content block array: [{"type": "text", "text": "..."}, {"type": "tool_use", ...}]
+    """
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        return " ".join(parts)
+
+    return str(content) if content else ""
 
 
 if __name__ == "__main__":

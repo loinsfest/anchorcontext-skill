@@ -82,7 +82,8 @@ _RE_FILENAME = re.compile(r'\b([\w-]+\.(?:ts|tsx|js|jsx|py|go|rs|java|rb|php|sql
 _RE_IDENTIFIER = re.compile(r'\b([a-z]+(?:[._][a-z]+)+)\b')  # snake_case, dot.case
 _RE_CAMELCASE = re.compile(r'\b([a-z]+(?:[A-Z][a-z]+)+)\b')  # camelCase
 _RE_PASCALCASE = re.compile(r'\b([A-Z][a-z]+(?:[A-Z]+[a-z]*|\d+)+)\b')  # PascalCase + UPPER segments (PostgreSQL, OAuth2)
-_RE_PROPER_NAME = re.compile(r'\b([A-Z][a-zA-Z0-9]{4,}(?:\s*[A-Z][a-zA-Z0-9]+)*)\b')  # Broad tech name catch-all
+# [ \t] not \s — prevents matching across message boundaries (newlines)
+_RE_PROPER_NAME = re.compile(r'\b([A-Z][a-zA-Z0-9]{4,}(?:[ \t]+[A-Z][a-zA-Z0-9]+)*)\b')  # Broad tech name catch-all
 _RE_UPPER = re.compile(r'\b([A-Z]{2,}(?:_[A-Z]{2,})*)\b')  # UPPER_CASE
 _RE_CMD_FLAG = re.compile(r'\b(--?[a-z-]{2,})\b')  # --flag, -f
 _RE_DOMAIN = re.compile(r'\b([\w-]+\.(?:internal|com|io|org|net|dev|local))\b')  # grafana.internal
